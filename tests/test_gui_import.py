@@ -13,3 +13,8 @@ def test_settings_tab_exists():
 def test_template_tab_exists():
     import generator.gui.tab_template as t
     assert hasattr(t, "TemplateTab")
+
+
+def test_report_tab_exists():
+    import generator.gui.tab_report as t
+    assert hasattr(t, "ReportTab")

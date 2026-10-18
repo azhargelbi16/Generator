@@ -11,14 +11,6 @@ from tkinter import filedialog, messagebox, ttk
 from .. import config, database, logging_setup, paths
 
 
-class _PlaceholderTab(ttk.Frame):
-    """Tab yang isinya menyusul di task berikutnya."""
-
-    def __init__(self, parent, label: str):
-        super().__init__(parent, padding=12)
-        ttk.Label(self, text=f"Tab {label} menyusul pada task berikutnya.").pack(anchor="w")
-
-
 def _ensure_dirs_or_ask() -> bool:
     """Siapkan folder data; bila gagal, minta user memilih folder lain (12.8)."""
     try:
@@ -77,11 +69,11 @@ def build_app() -> tk.Tk | None:
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
-    from . import tab_data, tab_settings, tab_template  # import bertahap; sisanya menyusul
+    from . import tab_data, tab_report, tab_settings, tab_template
 
     notebook.add(tab_data.DataTab(notebook, db), text="Data")
     notebook.add(tab_template.TemplateTab(notebook, db), text="Template")
-    notebook.add(_PlaceholderTab(notebook, "Laporan"), text="Laporan")
+    notebook.add(tab_report.ReportTab(notebook, db), text="Laporan")
     notebook.add(tab_settings.SettingsTab(notebook, paths.CONFIG_PATH), text="Pengaturan")
 
     hint = "API key belum diisi; buka tab Pengaturan untuk mengisi endpoint dan API key."
