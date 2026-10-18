@@ -226,3 +226,106 @@ def compose(paragraph: Paragraph, labels: dict[int, str]) -> str:
                 citation = " (" + "; ".join(inner) + ")"
         parts.append(_insert_before_final_punctuation(sentence.text, citation))
     return " ".join(parts)
+
+
+def _source_samples(source_texts: list[str], max_chars: int = 1500) -> list[tuple[int, str]]:
+    """Ambil cuplikan awal tiap sumber untuk prompt usulan outline dan parafrase."""
+    samples: list[tuple[int, str]] = []
+    for source_id, text in enumerate(source_texts):
+        chunks = chunk_text(text, max_chars=max_chars)
+        if chunks:
+            samples.append((source_id, chunks[0].text))
+    return samples
+
+
+def suggest_outline(
+    topic: str,
+    sources: list,
+    source_texts: list[str],
+    client,
+    max_items: int = 12,
+) -> list[str]:
+    """Usulkan judul bab dari topik dan ringkasan sumber (18.2). JSON gagal berarti kosong."""
+    reply = client.chat(
+        prompts.outline_prompt(topic, sources, _source_samples(source_texts), max_items),
+        json_mode=True,
+    )
+    data = _first_json_object(reply)
+    if data is None:
+        return []
+    outline = data.get("outline")
+    if not isinstance(outline, list):
+        return []
+    titles = [str(item).strip() for item in outline if str(item).strip()]
+    return titles[:max_items]
+
+
+def paraphrase(paragraph: Paragraph, sources: list, source_texts: list[str], client) -> Paragraph:
+    """Parafrase satu paragraf; hasil tetap `origin="ai"` agar harus lulus verifikasi (19)."""
+    reply = client.chat(
+        prompts.paraphrase_prompt(paragraph, sources, _source_samples(source_texts)),
+        json_mode=True,
+    )
+    data = _first_json_object(reply)
+    if data is None:
+        return paragraph
+    raw_sentences = data.get("sentences")
+    if not isinstance(raw_sentences, list):
+        return paragraph
+    sentences: list[Sentence] = []
+    for raw_sentence in raw_sentences:
+        if not isinstance(raw_sentence, dict):
+            continue
+        text = str(raw_sentence.get("text", "") or "")
+        if not text:
+            continue
+        sentences.append(
+            Sentence(
+                text=text,
+                quote=str(raw_sentence.get("quote", "") or ""),
+                source_ids=_coerce_source_ids(raw_sentence.get("source_ids")),
+                is_factual=bool(raw_sentence.get("is_factual", True)),
+            )
+        )
+    if not sentences:
+        return paragraph
+    return Paragraph(sentences)
+
+
+def merge_regenerated(
+    old_sections: list[Section],
+    new_sections: list[Section],
+    overwrite_all: bool = False,
+) -> list[Section]:
+    """Gabungkan hasil tulis ulang dengan catatan manual lama (19).
+
+    Kalimat `origin="manual"` dipertahankan: bab yang judulnya sama menerima catatan
+    lama di belakang hasil baru; catatan dari bab yang sudah tidak ada tetap dipakai
+    di babnya sendiri di urutan belakang. `overwrite_all` memakai hasil baru saja.
+    """
+    if overwrite_all:
+        return new_sections
+    merged = list(new_sections)
+    by_title = {_normalize(section.title): section for section in merged}
+    orphans: dict[str, Section] = {}
+    for section in old_sections:
+        manual = [
+            sentence
+            for paragraph in section.paragraphs
+            for sentence in paragraph.sentences
+            if sentence.origin == "manual"
+        ]
+        if not manual:
+            continue
+        key = _normalize(section.title)
+        target = by_title.get(key)
+        if target is not None:
+            target.paragraphs.append(Paragraph(manual))
+            continue
+        orphan = orphans.get(key)
+        if orphan is None:
+            orphan = Section(section.level, section.title, [])
+            orphans[key] = orphan
+            merged.append(orphan)
+        orphan.paragraphs.append(Paragraph(manual))
+    return merged
