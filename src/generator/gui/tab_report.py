@@ -12,17 +12,29 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from .. import config, database, drafts, paths
+from .. import config, database, drafts, paths, report
 from ..ai import bibliography, content
 from ..ai.citation import Author, Source
 from ..ai.client import AIClient
 from ..document.template import TemplateError, validate_template
 from ..sources import pdf_reader, web_reader
+from ..verification import (
+    STATUS_NON_FACTUAL,
+    STATUS_UNVERIFIED,
+    STATUS_VERIFIED,
+    verify_sections,
+)
 from .worker import run_in_thread
 
 _DRAFT_ID = "aktif"
 
 _AUTHOR_FIELDS = ("family", "given", "is_org", "abbrev")
+
+_STATUS_MARKS = {
+    STATUS_VERIFIED: ("OK ", "status-ok"),
+    STATUS_UNVERIFIED: ("BELUM ", "status-belum"),
+    STATUS_NON_FACTUAL: ("BUKAN-KLAIM ", "status-nonfactual"),
+}
 
 
 def normalize_metadata(doc: dict[str, str]) -> dict[str, str]:
@@ -86,6 +98,9 @@ class ReportTab(ttk.Frame):
         super().__init__(parent, padding=12)
         self._db = db
         self._sources: list[dict] = []
+        self._sections = []
+        self._statuses = []
+        self._done: set[str] = set()
         self._templates = db.list_template()
         self._dosen_list = db.list_dosen()
         self._matkul_list = db.list_mata_kuliah()
@@ -203,9 +218,26 @@ class ReportTab(ttk.Frame):
             frame, text="Usulkan Outline", command=self._suggest_outline
         )
         self._suggest_button.grid(row=8, column=0, columnspan=2, sticky="w", padx=6, pady=4)
+        ttk.Button(frame, text="Generate isi laporan", command=self._generate).grid(
+            row=9, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8)
+        )
         frame.columnconfigure(1, weight=1)
         frame.rowconfigure(7, weight=1)
         self._update_outline_button()
+        self._build_result_area(parent)
+
+    def _build_result_area(self, parent) -> None:
+        result = ttk.LabelFrame(parent, text="Hasil generate (status per kalimat)")
+        result.pack(side="top", fill="both", expand=True, pady=(8, 0))
+        self._result_text = tk.Text(result, width=48, height=10, wrap="word", state="disabled")
+        self._result_text.pack(side="left", fill="both", expand=True, padx=4, pady=4)
+        scrollbar = ttk.Scrollbar(result, command=self._result_text.yview)
+        scrollbar.pack(side="right", fill="y")
+        self._result_text.config(yscrollcommand=scrollbar.set)
+        self._result_text.tag_config("status-ok", foreground="#1a7f37")
+        self._result_text.tag_config("status-belum", foreground="#b42318")
+        self._result_text.tag_config("status-nonfactual", foreground="#666666")
+        self._result_text.tag_config("judul-bab", font=("", 10, "bold"))
 
     # -------------------------------------------------------------- sumber
 
@@ -468,6 +500,62 @@ class ReportTab(ttk.Frame):
 
     # ---------------------------------------------------------------- draf
 
+    def _generate(self) -> None:
+        outline = self._outline_content()
+        if not outline:
+            messagebox.showinfo(
+                "Outline kosong", "Isi outline manual atau klik Usulkan Outline lebih dulu."
+            )
+            return
+        if not self._sources:
+            messagebox.showinfo(
+                "Tanpa sumber", "Tambahkan minimal satu sumber sebelum generate."
+            )
+            return
+        topic = self._judul_var.get().strip() or "Laporan"
+        self._status.config(text="Menyusun isi laporan; bisa memakan waktu beberapa menit...")
+        client = self._ai_client()
+        sources = [record_to_source(record) for record in self._sources]
+        texts = [record.get("text", "") for record in self._sources]
+
+        def work():
+            return content.generate_sections(topic, outline, sources, texts, client)
+
+        def on_success(sections) -> None:
+            self._sections = sections
+            self._reverify()
+            self._render_statuses()
+            self._save_draft()
+            self._status.config(text=f"Generate selesai: {len(sections)} bab.")
+
+        def on_error(error) -> None:
+            messagebox.showerror("Generate gagal", str(error))
+            self._status.config(text="Generate gagal.")
+
+        run_in_thread(self, work, on_success=on_success, on_error=on_error)
+
+    def _source_texts_by_id(self) -> dict[int, str]:
+        return {index: record.get("text", "") for index, record in enumerate(self._sources)}
+
+    def _reverify(self) -> None:
+        self._statuses = verify_sections(self._sections, self._source_texts_by_id())
+
+    def _render_statuses(self) -> None:
+        status_by_uid = {item.sentence.uid: item.status for item in self._statuses}
+        self._result_text.config(state="normal")
+        self._result_text.delete("1.0", "end")
+        for section in self._sections:
+            self._result_text.insert("end", f"## {section.title}\n", "judul-bab")
+            for paragraph in section.paragraphs:
+                for sentence in paragraph.sentences:
+                    mark, tag = _STATUS_MARKS.get(
+                        status_by_uid.get(sentence.uid, STATUS_UNVERIFIED),
+                        _STATUS_MARKS[STATUS_UNVERIFIED],
+                    )
+                    self._result_text.insert("end", mark, tag)
+                    self._result_text.insert("end", sentence.text + "\n")
+        self._result_text.config(state="disabled")
+
     def _collect_fields(self) -> dict:
         return {
             "judul": self._judul_var.get(),
@@ -483,8 +571,8 @@ class ReportTab(ttk.Frame):
             draft_id=_DRAFT_ID,
             fields=self._collect_fields(),
             sources=self._sources,
-            sections=[],
-            done=[],
+            sections=report.sections_to_dicts(self._sections),
+            done=sorted(self._done),
         )
         drafts.save_draft(state)
 
@@ -501,6 +589,11 @@ class ReportTab(ttk.Frame):
                 self._picker_vars[key].set(fields[key])
         self._sources = list(state.sources)
         self._refresh_source_list()
+        self._sections = report.sections_from_dicts(state.sections)
+        self._done = set(state.done)
+        if self._sections:
+            self._reverify()
+            self._render_statuses()
         if fields.get("template"):
             self._template_var.set(fields["template"])
             self._on_template_selected()
