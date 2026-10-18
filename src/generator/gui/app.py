@@ -77,14 +77,14 @@ def build_app() -> tk.Tk | None:
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
-    from . import tab_data  # import bertahap; tab lain mengikuti di task berikutnya
+    from . import tab_data, tab_settings  # import bertahap; tab lain mengikuti di task berikutnya
 
     notebook.add(tab_data.DataTab(notebook, db), text="Data")
     notebook.add(_PlaceholderTab(notebook, "Template"), text="Template")
     notebook.add(_PlaceholderTab(notebook, "Laporan"), text="Laporan")
-    notebook.add(_PlaceholderTab(notebook, "Pengaturan"), text="Pengaturan")
+    notebook.add(tab_settings.SettingsTab(notebook, paths.CONFIG_PATH), text="Pengaturan")
 
-    hint = "API key belum diisi; buka tab Pengaturan nanti setelah tab tersebut tersedia."
+    hint = "API key belum diisi; buka tab Pengaturan untuk mengisi endpoint dan API key."
     if not app_config.ai_api_key:
         status = tk.Label(root, text=hint, fg="#8a6d3b", anchor="w")
         status.pack(fill="x", side="bottom")
