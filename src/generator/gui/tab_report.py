@@ -8,7 +8,10 @@ formulir koreksi.
 
 from __future__ import annotations
 
+import logging
+import re
 import tkinter as tk
+from datetime import date
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -16,6 +19,7 @@ from .. import config, database, drafts, paths, report
 from ..ai import bibliography, content
 from ..ai.citation import Author, Source
 from ..ai.client import AIClient
+from ..document import renderer
 from ..document.template import TemplateError, validate_template
 from ..sources import pdf_reader, web_reader
 from ..verification import (
@@ -25,6 +29,8 @@ from ..verification import (
     verify_sections,
 )
 from .worker import run_in_thread
+
+_LOG = logging.getLogger(__name__)
 
 _DRAFT_ID = "aktif"
 
@@ -111,6 +117,7 @@ class ReportTab(ttk.Frame):
         self._matkul_list = db.list_mata_kuliah()
         self._logo_list = db.list_logo()
         self._template = None
+        self._unknown_markers: list[str] = []
 
         left = ttk.Frame(self)
         left.pack(side="left", fill="both", expand=True, padx=(0, 8))
@@ -258,6 +265,7 @@ class ReportTab(ttk.Frame):
             side="left", padx=4
         )
         ttk.Button(actions, text="Parafrase", command=self._paraphrase).pack(side="left", padx=4)
+        ttk.Button(actions, text="Simpan DOCX", command=self._save_docx).pack(side="left", padx=4)
 
         self._result_hint = ttk.Label(
             result,
@@ -631,6 +639,7 @@ class ReportTab(ttk.Frame):
         except TemplateError as error:
             messagebox.showerror("Template tidak valid", str(error))
             self._template = None
+            self._unknown_markers = []
             self._template_var.set("")
             return
         if result.missing or result.not_standalone:
@@ -645,9 +654,11 @@ class ReportTab(ttk.Frame):
             lines.append("Pilih template lain untuk melanjutkan.")
             messagebox.showwarning("Template tidak lengkap", "\n".join(lines))
             self._template = None
+            self._unknown_markers = []
             self._template_var.set("")
             return
         self._template = item
+        self._unknown_markers = list(result.unknown)
         if result.unknown:
             self._status.config(
                 text="Catatan: penanda tak dikenal di template: " + ", ".join(result.unknown)
@@ -703,6 +714,88 @@ class ReportTab(ttk.Frame):
         run_in_thread(self, work, on_success=on_success, on_error=on_error)
 
     # ---------------------------------------------------------------- draf
+
+    def _save_docx(self) -> None:
+        """Gerbang ekspor, susun fields, render DOCX di latar, hapus draf saat sukses (11.5, 18)."""
+        if not self._statuses:
+            messagebox.showinfo(
+                "Belum ada isi", "Generate isi laporan lebih dulu sebelum menyimpan DOCX."
+            )
+            return
+        if self._template is None:
+            messagebox.showinfo(
+                "Template belum siap",
+                "Pilih template yang lengkap di panel Pengaturan Laporan sebelum menyimpan.",
+            )
+            return
+        cited = report.cited_ids(self._statuses)
+        sources = [record_to_source(record) for record in self._sources]
+        labels = report.labels_for(sources, cited)
+        references = report.references_for(sources, cited)
+        uncited = report.uncited_ids(sources, cited)
+
+        ok, gate_message = report.can_export(self._statuses, frozenset(self._done))
+        if not ok:
+            proceed = messagebox.askyesno(
+                "Ekspor terblokir", f"{gate_message}\n\nTetap simpan DOCX sekarang?"
+            )
+            if not proceed:
+                self._status.config(text="Simpan dibatalkan; selesaikan kalimat yang tertunda.")
+                return
+            _LOG.warning("Ekspor dipaksa meski gerbang memblokir: %s", gate_message)
+        if uncited:
+            _LOG.info("Sumber dimasukkan tapi tidak dikutip: %s", uncited)
+            self._status.config(
+                text=f"Catatan: {len(uncited)} sumber tidak dikutip; tetap dicatat di log."
+            )
+        if self._unknown_markers:
+            proceed = messagebox.askyesno(
+                "Penanda tak dikenal",
+                "Template memuat penanda tak dikenal: "
+                + ", ".join(self._unknown_markers)
+                + "\n\nTetap simpan DOCX?",
+            )
+            if not proceed:
+                self._status.config(text="Simpan dibatalkan.")
+                return
+
+        profil = self._db.get_profil()
+        profile = {"nama": profil.nama, "nim": profil.nim, "prodi": profil.prodi} if profil else {}
+        judul = self._judul_var.get().strip()
+        fields = report.build_fields(
+            judul,
+            profile,
+            self._picker_vars["dosen"].get(),
+            self._picker_vars["matkul"].get(),
+            date.today(),
+        )
+        logo_path = None
+        logo_name = self._picker_vars["logo"].get()
+        if logo_name:
+            item = next((l for l in self._logo_list if l.nama == logo_name), None)
+            if item is not None and item.path:
+                logo_path = Path(item.path)
+        safe_judul = re.sub(r"[^\w\- ]", "", judul).strip().replace(" ", "_") or "laporan"
+        out_path = paths.OUTPUT_DIR / f"{safe_judul}.docx"
+        template_path = Path(self._template.path)
+        sections = self._sections
+        self._status.config(text="Menyusun dokumen DOCX...")
+
+        def work():
+            return renderer.render_report(
+                template_path, fields, sections, references, logo_path, out_path, labels=labels
+            )
+
+        def on_success(result) -> None:
+            drafts.delete_draft(_DRAFT_ID)
+            self._status.config(text=f"DOCX tersimpan: {result}")
+            messagebox.showinfo("Dokumen tersimpan", f"Berkas laporan tersimpan di:\n{result}")
+
+        def on_error(error) -> None:
+            messagebox.showerror("Gagal menyimpan DOCX", str(error))
+            self._status.config(text="Penyimpanan DOCX gagal.")
+
+        run_in_thread(self, work, on_success=on_success, on_error=on_error)
 
     def _generate(self) -> None:
         outline = self._outline_content()

@@ -11,9 +11,49 @@ Keputusan putaran 6 yang dipegang modul ini:
 
 from __future__ import annotations
 
+from datetime import date
+
 from .ai.citation import Source, order_and_label
 from .ai.content import Paragraph, Section, Sentence
 from .verification import STATUS_NON_FACTUAL, STATUS_VERIFIED, SentenceStatus
+
+_BULAN_INDONESIA = (
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+)
+
+
+def format_tanggal(d: date) -> str:
+    """Tanggal dalam bahasa Indonesia, mis. 18 Oktober 2026 (18.5)."""
+    return f"{d.day} {_BULAN_INDONESIA[d.month - 1]} {d.year}"
+
+
+def build_fields(
+    judul: str,
+    profile: dict,
+    dosen: str,
+    mata_kuliah: str,
+    tanggal: date,
+) -> dict[str, str]:
+    """Isi penanda wajib; penanda opsional hanya bila nilainya tidak kosong (18.5).
+
+    Penanda yang tidak disertakan akan dikosongkan oleh renderer, sehingga tidak
+    pernah ada penanda mentah tercetak di dokumen hasil.
+    """
+    fields = {
+        "{{JUDUL}}": judul.strip(),
+        "{{NAMA}}": str(profile.get("nama", "")).strip(),
+        "{{NIM}}": str(profile.get("nim", "")).strip(),
+        "{{DOSEN}}": dosen.strip(),
+        "{{MATA_KULIAH}}": mata_kuliah.strip(),
+        "{{TANGGAL}}": format_tanggal(tanggal),
+    }
+    prodi = str(profile.get("prodi", "")).strip()
+    if prodi:
+        fields["{{PRODI}}"] = prodi
+    if tanggal.year:
+        fields["{{TAHUN}}"] = str(tanggal.year)
+    return fields
 
 
 def can_export(
