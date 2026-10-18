@@ -77,10 +77,10 @@ def build_app() -> tk.Tk | None:
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
-    from . import tab_data, tab_settings  # import bertahap; tab lain mengikuti di task berikutnya
+    from . import tab_data, tab_settings, tab_template  # import bertahap; sisanya menyusul
 
     notebook.add(tab_data.DataTab(notebook, db), text="Data")
-    notebook.add(_PlaceholderTab(notebook, "Template"), text="Template")
+    notebook.add(tab_template.TemplateTab(notebook, db), text="Template")
     notebook.add(_PlaceholderTab(notebook, "Laporan"), text="Laporan")
     notebook.add(tab_settings.SettingsTab(notebook, paths.CONFIG_PATH), text="Pengaturan")
 

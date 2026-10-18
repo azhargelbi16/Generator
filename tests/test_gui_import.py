@@ -8,3 +8,8 @@ def test_gui_imports_without_tk_root():
 def test_settings_tab_exists():
     import generator.gui.tab_settings as t
     assert hasattr(t, "SettingsTab")
+
+
+def test_template_tab_exists():
+    import generator.gui.tab_template as t
+    assert hasattr(t, "TemplateTab")
