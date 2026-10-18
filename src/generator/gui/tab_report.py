@@ -31,9 +31,14 @@ _DRAFT_ID = "aktif"
 _AUTHOR_FIELDS = ("family", "given", "is_org", "abbrev")
 
 _STATUS_MARKS = {
-    STATUS_VERIFIED: ("OK ", "status-ok"),
-    STATUS_UNVERIFIED: ("BELUM ", "status-belum"),
-    STATUS_NON_FACTUAL: ("BUKAN-KLAIM ", "status-nonfactual"),
+    STATUS_VERIFIED: "OK",
+    STATUS_UNVERIFIED: "BELUM",
+    STATUS_NON_FACTUAL: "BUKAN-KLAIM",
+}
+_STATUS_COLORS = {
+    STATUS_VERIFIED: "#1a7f37",
+    STATUS_UNVERIFIED: "#b42318",
+    STATUS_NON_FACTUAL: "#666666",
 }
 
 
@@ -227,17 +232,216 @@ class ReportTab(ttk.Frame):
         self._build_result_area(parent)
 
     def _build_result_area(self, parent) -> None:
-        result = ttk.LabelFrame(parent, text="Hasil generate (status per kalimat)")
+        result = ttk.LabelFrame(parent, text="Hasil generate (satu kotak per kalimat)")
         result.pack(side="top", fill="both", expand=True, pady=(8, 0))
-        self._result_text = tk.Text(result, width=48, height=10, wrap="word", state="disabled")
-        self._result_text.pack(side="left", fill="both", expand=True, padx=4, pady=4)
-        scrollbar = ttk.Scrollbar(result, command=self._result_text.yview)
+
+        container = ttk.Frame(result)
+        container.pack(side="top", fill="both", expand=True, padx=4, pady=4)
+        self._canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self._canvas.yview)
+        self._rows_frame = ttk.Frame(self._canvas, padding=2)
+        self._rows_window = self._canvas.create_window((0, 0), window=self._rows_frame, anchor="nw")
+        self._canvas.configure(yscrollcommand=scrollbar.set)
+        self._canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
-        self._result_text.config(yscrollcommand=scrollbar.set)
-        self._result_text.tag_config("status-ok", foreground="#1a7f37")
-        self._result_text.tag_config("status-belum", foreground="#b42318")
-        self._result_text.tag_config("status-nonfactual", foreground="#666666")
-        self._result_text.tag_config("judul-bab", font=("", 10, "bold"))
+        self._rows_frame.bind("<Configure>", lambda _event: self._on_rows_configure())
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+        actions = ttk.Frame(result)
+        actions.pack(side="bottom", fill="x")
+        ttk.Button(actions, text="Tandai selesai", command=self._mark_done).pack(side="left", padx=4)
+        ttk.Button(
+            actions, text="Tandai semua bukan klaim selesai", command=self._mark_all_nonfactual_done
+        ).pack(side="left", padx=4)
+        ttk.Button(actions, text="Pulihkan sitasi", command=self._restore_citation_action).pack(
+            side="left", padx=4
+        )
+        ttk.Button(actions, text="Parafrase", command=self._paraphrase).pack(side="left", padx=4)
+
+        self._result_hint = ttk.Label(
+            result,
+            text="Klik kotak kalimat untuk memilih; mengubah isinya menandai kalimat manual "
+            "(berstatus belum terverifikasi sampai ditandai selesai).",
+            foreground="#666666",
+            wraplength=560,
+            justify="left",
+        )
+        self._result_hint.pack(side="bottom", fill="x")
+
+        self._rows = []
+        self._selected_row = None
+        self._render_statuses()
+
+    def _on_rows_configure(self) -> None:
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event) -> None:
+        self._canvas.itemconfigure(self._rows_window, width=event.width)
+
+    def _on_mousewheel(self, event) -> None:
+        self._canvas.yview_scroll(-int(event.delta / 120), "units")
+
+    def _render_statuses(self) -> None:
+        """Bangun ulang baris kalimat; pemetaan teks ke kalimat satu banding satu."""
+        for child in self._rows_frame.winfo_children():
+            child.destroy()
+        self._rows = []
+        self._selected_row = None
+        status_by_uid = {item.sentence.uid: item.status for item in self._statuses}
+        total = 0
+        for section in self._sections:
+            ttk.Label(
+                self._rows_frame, text=f"## {section.title}", font=("", 10, "bold")
+            ).pack(fill="x", pady=(8, 2))
+            for paragraph in section.paragraphs:
+                for sentence in paragraph.sentences:
+                    total += 1
+                    row = ttk.Frame(self._rows_frame)
+                    row.pack(fill="x", pady=2)
+                    status = status_by_uid.get(sentence.uid, STATUS_UNVERIFIED)
+                    label = ttk.Label(
+                        row,
+                        text=_STATUS_MARKS.get(status, _STATUS_MARKS[STATUS_UNVERIFIED]),
+                        width=13,
+                        anchor="w",
+                        foreground=_STATUS_COLORS.get(status, _STATUS_COLORS[STATUS_UNVERIFIED]),
+                    )
+                    label.pack(side="left")
+                    var = tk.StringVar(value=sentence.text)
+                    entry = ttk.Entry(row, textvariable=var)
+                    entry.pack(side="left", fill="x", expand=True)
+                    rec = {
+                        "uid": sentence.uid,
+                        "sentence": sentence,
+                        "var": var,
+                        "label": label,
+                        "entry": entry,
+                    }
+                    entry.bind("<Button-1>", lambda _event, rec=rec: self._select_row(rec))
+                    entry.bind("<FocusIn>", lambda _event, rec=rec: self._select_row(rec))
+                    entry.bind("<FocusOut>", lambda _event, rec=rec: self._commit_edit(rec))
+                    entry.bind("<Return>", lambda _event, rec=rec: self._commit_edit(rec))
+                    self._rows.append(rec)
+        if total == 0:
+            ttk.Label(
+                self._rows_frame,
+                text="Belum ada isi. Isi outline, tambahkan sumber, lalu klik Generate isi laporan.",
+            ).pack(anchor="w", pady=8)
+        self._rows_frame.update_idletasks()
+        self._on_rows_configure()
+
+    def _select_row(self, rec: dict) -> None:
+        self._selected_row = rec
+        self._result_hint.config(text=f"Kalimat terpilih: {rec['sentence'].text[:70]}")
+
+    def _iter_sentences(self):
+        for section in self._sections:
+            for paragraph in section.paragraphs:
+                yield from paragraph.sentences
+
+    def _swap_sentence(self, uid: str, replacements: list) -> bool:
+        """Ganti satu kalimat ber-uid dengan daftar kalimat baru di paragraf asalnya."""
+        for section in self._sections:
+            for paragraph in section.paragraphs:
+                for index, sentence in enumerate(paragraph.sentences):
+                    if sentence.uid == uid:
+                        paragraph.sentences[index : index + 1] = replacements
+                        return True
+        return False
+
+    def _commit_edit(self, rec: dict) -> None:
+        new_text = rec["var"].get().strip()
+        if not new_text or new_text == rec["sentence"].text:
+            return
+        new_sentence = report.apply_manual_edit(rec["sentence"], new_text)
+        self._swap_sentence(rec["sentence"].uid, [new_sentence])
+        rec["sentence"] = new_sentence
+        self._after_structure_change(
+            "Kalimat disunting manual; berstatus belum terverifikasi sampai ditandai selesai."
+        )
+
+    def _after_structure_change(self, message: str) -> None:
+        self._reverify()
+        self._refresh_row_marks()
+        self._save_draft()
+        self._status.config(text=message)
+
+    def _refresh_row_marks(self) -> None:
+        """Perbarui penanda status tiap baris tanpa membangun ulang kotak teks."""
+        status_by_uid = {item.sentence.uid: item.status for item in self._statuses}
+        fresh = {sentence.uid: sentence for sentence in self._iter_sentences()}
+        for rec in self._rows:
+            sentence = fresh.get(rec["uid"])
+            if sentence is not None:
+                rec["sentence"] = sentence
+            status = status_by_uid.get(rec["uid"], STATUS_UNVERIFIED)
+            rec["label"].config(
+                text=_STATUS_MARKS.get(status, _STATUS_MARKS[STATUS_UNVERIFIED]),
+                foreground=_STATUS_COLORS.get(status, _STATUS_COLORS[STATUS_UNVERIFIED]),
+            )
+
+    def _mark_done(self) -> None:
+        if self._selected_row is None:
+            self._status.config(text="Klik dulu kotak kalimat yang ingin ditandai selesai.")
+            return
+        self._done.add(self._selected_row["uid"])
+        self._refresh_row_marks()
+        self._save_draft()
+        self._status.config(text="Kalimat ditandai selesai.")
+
+    def _mark_all_nonfactual_done(self) -> None:
+        uids = report.non_factual_uids(self._statuses)
+        self._done.update(uids)
+        self._refresh_row_marks()
+        self._save_draft()
+        self._status.config(text=f"{len(uids)} kalimat bukan klaim faktual ditandai selesai.")
+
+    def _restore_citation_action(self) -> None:
+        if self._selected_row is None:
+            self._status.config(text="Klik dulu kotak kalimat yang sitasinya ingin dipulihkan.")
+            return
+        sentence = self._selected_row["sentence"]
+        if sentence.citation:
+            self._status.config(text="Sitasi kalimat ini sudah aktif.")
+            return
+        new_sentence = report.restore_citation(sentence)
+        self._swap_sentence(sentence.uid, [new_sentence])
+        self._selected_row["sentence"] = new_sentence
+        self._after_structure_change("Sitasi kalimat dipulihkan.")
+
+    def _paraphrase(self) -> None:
+        if self._selected_row is None:
+            self._status.config(text="Klik dulu kotak kalimat yang ingin diparafrase.")
+            return
+        sentence = self._selected_row["sentence"]
+        client = self._ai_client()
+        sources = [record_to_source(record) for record in self._sources]
+        texts = [record.get("text", "") for record in self._sources]
+        self._status.config(text="Memparafrase kalimat terpilih...")
+
+        def work():
+            return content.paraphrase(content.Paragraph([sentence]), sources, texts, client)
+
+        def on_success(paragraph) -> None:
+            new_sentences = list(paragraph.sentences)
+            if not new_sentences:
+                messagebox.showwarning(
+                    "Parafrase gagal", "AI tidak mengembalikan kalimat baru; kalimat tidak diubah."
+                )
+                self._status.config(text="Parafrase tidak mengubah apa pun.")
+                return
+            self._swap_sentence(sentence.uid, new_sentences)
+            self._render_statuses()
+            self._after_structure_change(
+                "Parafrase selesai; kalimat baru dihitung ulang statusnya."
+            )
+
+        def on_error(error) -> None:
+            messagebox.showerror("Parafrase gagal", str(error))
+            self._status.config(text="Parafrase gagal.")
+
+        run_in_thread(self, work, on_success=on_success, on_error=on_error)
 
     # -------------------------------------------------------------- sumber
 
@@ -539,22 +743,6 @@ class ReportTab(ttk.Frame):
 
     def _reverify(self) -> None:
         self._statuses = verify_sections(self._sections, self._source_texts_by_id())
-
-    def _render_statuses(self) -> None:
-        status_by_uid = {item.sentence.uid: item.status for item in self._statuses}
-        self._result_text.config(state="normal")
-        self._result_text.delete("1.0", "end")
-        for section in self._sections:
-            self._result_text.insert("end", f"## {section.title}\n", "judul-bab")
-            for paragraph in section.paragraphs:
-                for sentence in paragraph.sentences:
-                    mark, tag = _STATUS_MARKS.get(
-                        status_by_uid.get(sentence.uid, STATUS_UNVERIFIED),
-                        _STATUS_MARKS[STATUS_UNVERIFIED],
-                    )
-                    self._result_text.insert("end", mark, tag)
-                    self._result_text.insert("end", sentence.text + "\n")
-        self._result_text.config(state="disabled")
 
     def _collect_fields(self) -> dict:
         return {

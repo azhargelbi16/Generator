@@ -71,6 +71,32 @@ def uncited_ids(sources: list[Source], cited: set[int]) -> list[int]:
 # --------------------------------------------------------------- serialisasi
 
 
+def apply_manual_edit(sentence: Sentence, new_text: str) -> Sentence:
+    """Kalimat baru hasil suntingan manual; uid dan sumber tetap, asal jadi manual (19)."""
+    return Sentence(
+        text=new_text,
+        quote=sentence.quote,
+        source_ids=list(sentence.source_ids),
+        is_factual=sentence.is_factual,
+        uid=sentence.uid,
+        origin="manual",
+        citation=sentence.citation,
+    )
+
+
+def restore_citation(sentence: Sentence) -> Sentence:
+    """Salinan kalimat dengan sitasi dibuka kembali; objek lama tidak diubah."""
+    return Sentence(
+        text=sentence.text,
+        quote=sentence.quote,
+        source_ids=list(sentence.source_ids),
+        is_factual=sentence.is_factual,
+        uid=sentence.uid,
+        origin=sentence.origin,
+        citation=True,
+    )
+
+
 def sentence_to_dict(sentence: Sentence) -> dict:
     """Serialisasi kalimat lengkap dengan identitas agar draf setia pada asalnya."""
     return {
