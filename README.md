@@ -69,12 +69,15 @@ Aturan penting:
    - Masukkan sumber: PDF (dibaca langsung, atau OCR bila hasil pindaian), tautan web, atau teks manual. Metadata boleh dikoreksi lewat formulir; aplikasi tidak pernah menebak pemisahan nama penulis.
    - Tulis judul, klik **Usulkan outline**, sunting bila perlu.
    - Klik **Generate**. Setiap kalimat hasil AI membawa kutipan dari sumber dan diperiksa ulang secara lokal.
-   - Periksa tiap kalimat: sunting langsung di kotaknya, **Tandai selesai** kalimat yang sudah Anda setujui, atau **Parafrase**.
+   - Di tab **Review Hasil** dokumen tampil bersih seperti di Microsoft Word: huruf Times New Roman 12 poin, judul laporan dan judul bab lebih besar dan tebal, sitasi tertulis langsung di kalimatnya, mis. (Santoso, 2020). Tidak ada warna di badan dokumen; scroll bebas seperti membaca di Word.
+   - Klik satu kalimat: kalimat itu disorot lembut dan tepat di bawahnya muncul satu baris kecil berisi status berwarna serta tombol **Parafrase**, **Tandai selesai**, dan **Pulihkan sitasi**. Klik di luar kalimat untuk melepasnya.
+   - Untuk memperbaiki kalimat, klik kalimatnya lalu ketik langsung di tempatnya; bagian lain dokumen terkunci. Pindah klik ke kalimat lain atau ke area kosong untuk menyimpan perbaikan secara otomatis. Kalimat hasil suntingan Anda berstatus belum terverifikasi sampai Anda menandainya selesai.
+   - Penghitung kecil di atas dokumen menunjukkan berapa kalimat yang sudah selesai diverifikasi.
    - Klik **Simpan DOCX**. Hasil tersimpan di folder `output\` dengan nama dari judul laporan. Draf otomatis terhapus setelah ekspor sukses.
 
 ## Status kalimat dan gerbang ekspor
 
-Setiap kalimat selalu punya salah satu dari tiga status:
+Setiap kalimat selalu punya salah satu dari tiga status. Warna status hanya muncul pada kalimat yang sedang Anda klik, di baris kecil di bawahnya; badan dokumen tetap bersih tanpa warna.
 
 | Status | Arti |
 | --- | --- |
