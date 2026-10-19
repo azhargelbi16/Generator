@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from .ai import content
 from .ai.citation import Source, order_and_label
 from .ai.content import Paragraph, Section, Sentence
 from .verification import STATUS_NON_FACTUAL, STATUS_VERIFIED, SentenceStatus
@@ -54,6 +55,14 @@ def build_fields(
     if tanggal.year:
         fields["{{TAHUN}}"] = str(tanggal.year)
     return fields
+
+
+def merge_for_regenerate(old_sections, new_sections, overwrite_all: bool):
+    """Keputusan generate ulang (19): bila ada isi lama, catatan manual
+    dipertahankan di belakang hasil baru kecuali user memilih tulis ulang semua."""
+    if not old_sections:
+        return new_sections
+    return content.merge_regenerated(old_sections, new_sections, overwrite_all=overwrite_all)
 
 
 def can_export(
@@ -154,12 +163,23 @@ def sentence_from_dict(raw: dict) -> Sentence:
     return Sentence(
         text=raw.get("text", ""),
         quote=raw.get("quote", ""),
-        source_ids=[int(sid) for sid in raw.get("source_ids", [])],
+        source_ids=_int_list(raw.get("source_ids", [])),
         is_factual=bool(raw.get("is_factual", True)),
         uid=raw.get("uid", ""),
         origin=raw.get("origin", "ai"),
         citation=bool(raw.get("citation", True)),
     )
+
+
+def _int_list(values) -> list[int]:
+    """Daftar int yang toleran terhadap JSON rusak atau suntingan tangan."""
+    result: list[int] = []
+    for value in values or []:
+        try:
+            result.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return result
 
 
 def sections_to_dicts(sections: list[Section]) -> list[dict]:

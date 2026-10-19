@@ -6,6 +6,7 @@ Mesin OCR dimuat sekali (lazy) supaya model tidak dibaca ulang tiap panggilan.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,27 +18,29 @@ class OcrError(Exception):
 
 
 _ENGINE: Any = None
+_ENGINE_LOCK = threading.Lock()
 
 
 def _engine() -> Any:
     global _ENGINE
-    if _ENGINE is not None:
+    with _ENGINE_LOCK:  # dua tambah sumber bersamaan tidak boleh memuat mesin dua kali
+        if _ENGINE is not None:
+            return _ENGINE
+        try:
+            from rapidocr import RapidOCR
+        except Exception as exc:  # pragma: no cover - bergantung lingkungan
+            raise OcrError(
+                "Mesin OCR tidak bisa dimuat. Pastikan paket rapidocr dan "
+                "onnxruntime sudah terpasang."
+            ) from exc
+        try:
+            _ENGINE = RapidOCR()
+        except Exception as exc:  # pragma: no cover - bergantung unduhan model
+            raise OcrError(
+                "Model OCR gagal dimuat. Sambungkan internet supaya model bisa "
+                "diunduh sekali, lalu coba lagi."
+            ) from exc
         return _ENGINE
-    try:
-        from rapidocr import RapidOCR
-    except Exception as exc:  # pragma: no cover - bergantung lingkungan
-        raise OcrError(
-            "Mesin OCR tidak bisa dimuat. Pastikan paket rapidocr dan "
-            "onnxruntime sudah terpasang."
-        ) from exc
-    try:
-        _ENGINE = RapidOCR()
-    except Exception as exc:  # pragma: no cover - bergantung unduhan model
-        raise OcrError(
-            "Model OCR gagal dimuat. Sambungkan internet supaya model bisa "
-            "diunduh sekali, lalu coba lagi."
-        ) from exc
-    return _ENGINE
 
 
 def normalize(text: str) -> str:

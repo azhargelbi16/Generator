@@ -22,7 +22,7 @@ Buka tab **Pengaturan** lalu isi:
 | Base URL | Endpoint API yang kompatibel OpenAI, mis. `http://localhost:1234/v1` |
 | API Key | Kunci layanan AI Anda |
 | Model | Nama model, mis. nama model lokal di LM Studio |
-| Temperatur | Angka 0 sampai 1; boleh diketik dengan koma, mis. `0,3` |
+| Temperatur | Angka 0 sampai 2; boleh diketik dengan koma, mis. `0,3` |
 
 Tekan **Tes Koneksi** untuk memastikan layanan merespons, lalu **Simpan**.
 
@@ -57,7 +57,7 @@ Aturan penting:
 - **Penanda khusus** (`{{ISI_LAPORAN}}`, `{{DAFTAR_PUSTAKA}}`, `{{DAFTAR_ISI}}`, `{{LOGO}}`) harus berdiri sendiri di satu paragraf. Bercampur dengan teks lain (mis. `Bab: {{ISI_LAPORAN}}`) ditolak.
 - Penanda yang hilang atau tidak berdiri sendiri: template **boleh disimpan** tetapi **tidak bisa dipakai** sampai diperbaiki.
 - Penanda tak dikenal (bukan daftar di atas) tetap dipakai tetapi Anda akan diminta konfirmasi saat menyimpan DOCX.
-- Text box dan shape **tidak didukung**; letakkan penanda di paragraf biasa, termasuk di header atau footer.
+- Text box dan shape **tidak didukung**; letakkan penanda di paragraf biasa, termasuk di header atau footer. Penanda di dalam tautan (hyperlink) atau tabel bersarang ditemukan saat validasi tetapi tidak diganti, jadi letakkan juga di paragraf atau tabel biasa.
 - Template tanpa style Heading tetap menghasilkan DOCX; judul bab memakai format tebal sebagai gantinya.
 - `{{DAFTAR_ISI}}` menjadi field TOC Word. Setelah dokumen terbuka di Word, klik kanan di daftar isi lalu pilih **Update Field** untuk mengisi nomor halaman.
 
@@ -79,16 +79,16 @@ Setiap kalimat selalu punya salah satu dari tiga status:
 | Status | Arti |
 | --- | --- |
 | Terverifikasi (hijau) | Kutipan kalimat ditemukan di teks sumber |
-| Belum terverifikasi (oranye) | Kutipan tidak ditemukan, atau kalimat baru Anda sunting |
+| Belum terverifikasi (merah) | Kutipan tidak ditemukan, atau kalimat baru Anda sunting |
 | Bukan klaim faktual (abu) | AI menandai kalimat sebagai opini atau kalimat pengantar |
 
 Ekspor diblokir selama masih ada kalimat yang belum ditandai selesai. Bila Anda tetap ingin menyimpan, muncul konfirmasi eksplisit dan kejadian itu dicatat di berkas log.
 
-Bila satu kalimat memakai beberapa sumber, sitasinya digabung dalam satu tanda kurung dipisah titik koma sesuai APA 7, mis. `(Zed, 2020; Abadi, 2021)`. Daftar pustaka hanya memuat sumber yang benar-benar dikutip.
+Bila satu kalimat memakai beberapa sumber, sitasinya digabung dalam satu tanda kurung dipisah titik koma dan diurutkan alfabetis sesuai APA 7, mis. `(Abadi, 2021; Zed, 2020)`. Daftar pustaka hanya memuat sumber yang benar-benar dikutip.
 
 ## Catatan OCR
 
-PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali rapidocr. Kualitas OCR bisa kurang akurat sehingga lebih banyak kalimat ditandai tidak terverifikasi; selalu periksa hasilnya. Model OCR diunduh saat pertama kali menjalankan OCR sehingga butuh internet, dan cache model disimpan di folder `data\`.
+PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali rapidocr. Kualitas OCR bisa kurang akurat sehingga lebih banyak kalimat ditandai tidak terverifikasi; selalu periksa hasilnya. Model OCR diunduh saat pertama kali menjalankan OCR sehingga butuh internet. Unduhannya dicache di dalam `.venv` (folder `site-packages`), bukan di folder `data\`, sehingga menghapus folder `data\` tidak mengulang unduhan model.
 
 ## Catatan teknis
 
@@ -102,9 +102,8 @@ PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali
 
 | Folder | Isi |
 | --- | --- |
-| `data\` | Basis data SQLite, `config.json`, logo, template, draf, cache OCR |
+| `data\` | Basis data SQLite, `config.json`, logo, template, draf, cache OCR, dan berkas log `app.log` |
 | `output\` | Dokumen DOCX hasil ekspor |
-| `logs\` | Berkas log aplikasi |
 
 ## Troubleshooting
 
@@ -115,5 +114,5 @@ PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali
 | Template ditolak saat dipilih | Buka pesan peringatan: lengkapi penanda wajib atau pisahkan penanda khusus dari teks lain |
 | Daftar isi kosong di Word | Klik kanan daftar isi, pilih Update Field |
 | Logo tidak muncul | Pilih logo di tab Data sebelum mengekspor; logo yang rusak dilewati dan dicatat di log |
-| Kalimat banyak yang oranye setelah PDF pindaian | Kualitas OCR rendah; coba teks manual atau PDF dengan lapisan teks |
-| Lupa menandai selesai | Kotak kalimat oranye menandai yang belum; gunakan tombol tandai massal untuk kalimat bukan-klaim |
+| Kalimat banyak yang merah setelah PDF pindaian | Kualitas OCR rendah; coba teks manual atau PDF dengan lapisan teks |
+| Lupa menandai selesai | Kotak kalimat merah menandai yang belum; gunakan tombol tandai massal untuk kalimat bukan-klaim |

@@ -38,9 +38,9 @@ def verify_sentence(sentence: Sentence, source_texts: dict[int, str], min_words:
     quote = normalize(sentence.quote)
     if not quote or len(quote.split()) < min_words or not sentence.source_ids:
         return STATUS_UNVERIFIED
-    referenced = " ".join(source_texts.get(source_id, "") for source_id in sentence.source_ids)
-    if quote in normalize(referenced):
-        return STATUS_VERIFIED
+    for source_id in sentence.source_ids:
+        if quote in normalize(source_texts.get(source_id, "")):
+            return STATUS_VERIFIED
     return STATUS_UNVERIFIED
 
 

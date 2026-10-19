@@ -48,7 +48,7 @@ class TemplateTab(ttk.Frame):
         self._listbox.delete(0, "end")
         self._items = self._db.list_template()
         for item in self._items:
-            self._listbox.insert("end", f"{item.nama}  —  {self._status_text(item)}")
+            self._listbox.insert("end", f"{item.nama}  -  {self._status_text(item)}")
 
     def _status_text(self, item: Template) -> str:
         path = Path(item.path)

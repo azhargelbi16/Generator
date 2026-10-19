@@ -778,7 +778,9 @@ class ReportTab(ttk.Frame):
         safe_judul = re.sub(r"[^\w\- ]", "", judul).strip().replace(" ", "_") or "laporan"
         out_path = paths.OUTPUT_DIR / f"{safe_judul}.docx"
         template_path = Path(self._template.path)
-        sections = self._sections
+        # Salinan data, bukan referensi hidup: suntingan kalimat saat render
+        # tidak boleh mengubah isi dokumen yang sedang disusun.
+        sections = report.sections_from_dicts(report.sections_to_dicts(self._sections))
         self._status.config(text="Menyusun dokumen DOCX...")
 
         def work():
@@ -819,11 +821,24 @@ class ReportTab(ttk.Frame):
             return content.generate_sections(topic, outline, sources, texts, client)
 
         def on_success(sections) -> None:
-            self._sections = sections
+            if self._sections:
+                overwrite_all = messagebox.askyesno(
+                    "Tulis ulang isi laporan",
+                    "Ada isi laporan yang sudah ada.\n\n"
+                    "Ya = tulis ulang semua; catatan manual Anda dibuang.\n"
+                    "Tidak = catatan manual dipertahankan di belakang hasil baru.",
+                )
+                self._sections = report.merge_for_regenerate(
+                    self._sections, sections, overwrite_all=overwrite_all
+                )
+            else:
+                self._sections = sections
             self._reverify()
             self._render_statuses()
             self._save_draft()
-            self._status.config(text=f"Generate selesai: {len(sections)} bab.")
+            self._status.config(
+                text=f"Generate selesai: {len(self._sections)} bab."
+            )
 
         def on_error(error) -> None:
             messagebox.showerror("Generate gagal", str(error))

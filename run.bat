@@ -8,7 +8,7 @@ set "PYTHON=py -3.12"
 %PYTHON% -c "import sys" >nul 2>&1
 if errorlevel 1 (
     set "PYTHON=python"
-    python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+    python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
 )
 if errorlevel 1 (
     echo Python 3.12 tidak ditemukan.
