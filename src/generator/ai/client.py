@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import requests
 
 from ..config import Config
@@ -11,6 +13,21 @@ TIMEOUT = 60
 
 class AIError(Exception):
     """Panggilan ke layanan AI gagal."""
+
+
+def _parse_body(text: str) -> dict:
+    """Parsih badan respons JSON; toleran bingkai SSE dari router.
+
+    9Router terbukti membalas JSON utuh diikuti penanda "data: [DONE]"
+    meski streaming tidak diminta (HTTP 200, content-type event-stream);
+    sebagian layanan lain memakai event "data: {...}" biasa. Ambil dokumen
+    JSON pertama dari badan, apa pun sisanya.
+    """
+    stripped = text.strip()
+    if stripped.startswith("data:"):
+        stripped = stripped[5:].lstrip()
+    data, _end = json.JSONDecoder().raw_decode(stripped)
+    return data
 
 
 class AIClient:
@@ -34,9 +51,11 @@ class AIClient:
                     f"Layanan AI menolak permintaan (HTTP {response.status_code})."
                 )
             response.raise_for_status()
-            data = response.json()
+            data = _parse_body(response.text)
         except AIError:
             raise
+        except ValueError as exc:
+            raise AIError(f"Format respons AI tidak dikenal: {exc}") from exc
         except Exception as exc:
             raise AIError(f"Gagal menghubungi layanan AI: {exc}") from exc
 

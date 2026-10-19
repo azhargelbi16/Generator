@@ -8,11 +8,14 @@ def _cfg():
 
 
 def test_chat_returns_content(monkeypatch):
+    import json as _json
+
     class Resp:
         status_code = 200
+        text = _json.dumps({"choices": [{"message": {"content": "halo"}}]})
 
         def json(self):
-            return {"choices": [{"message": {"content": "halo"}}]}
+            return _json.loads(self.text)
 
         def raise_for_status(self):
             pass
@@ -53,3 +56,48 @@ def test_check_connection_reports_failure(monkeypatch):
     monkeypatch.setattr("generator.ai.client.AIClient.chat", lambda self, *a, **k: boom())
     ok, msg = check_connection(AIClient(_cfg()))
     assert ok is False and msg
+
+
+def test_chat_parses_sse_body_with_done_marker(monkeypatch):
+    body = (
+        '{"choices":[{"finish_reason":"stop","index":0,"message":'
+        '{"content":"pong!","role":"assistant"}}],'
+        '"usage":{"total_tokens":61}}data: [DONE]\n\n'
+    )
+
+    class Resp:
+        status_code = 200
+        text = body
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("generator.ai.client.requests.post", lambda *a, **k: Resp())
+    assert AIClient(_cfg()).chat([{"role": "user", "content": "ping"}]) == "pong!"
+
+
+def test_chat_parses_prefixed_sse_events(monkeypatch):
+    body = 'data: {"choices":[{"message":{"content":"halo"}}]}\n\ndata: [DONE]\n'
+
+    class Resp:
+        status_code = 200
+        text = body
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("generator.ai.client.requests.post", lambda *a, **k: Resp())
+    assert AIClient(_cfg()).chat([{"role": "user", "content": "ping"}]) == "halo"
+
+
+def test_unparseable_body_raises_clear_error(monkeypatch):
+    class Resp:
+        status_code = 200
+        text = "<html>bukan json</html>"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("generator.ai.client.requests.post", lambda *a, **k: Resp())
+    with pytest.raises(AIError, match="tidak dikenal"):
+        AIClient(_cfg()).chat([{"role": "user", "content": "ping"}])
