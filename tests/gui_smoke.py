@@ -379,6 +379,13 @@ report_tab._add_manual_text(
 )
 assert pump(root3, lambda: len(report_tab._sources) == 2), "Sumber kedua tidak masuk"
 
+# Tombol hapus sumber harus tombol tk berwarna tegas; gaya ttk kustom tidak
+# digambar sv-ttk (teks putih di latar putih, tidak terlihat sama sekali).
+tombol_hapus = report_tab._tombol_hapus
+assert isinstance(tombol_hapus, ttk_tk.Button), "Tombol hapus harus tk.Button berwarna tegas"
+assert tombol_hapus.cget("background") == "#c0392b", tombol_hapus.cget("background")
+assert tombol_hapus.cget("foreground") == "#ffffff", tombol_hapus.cget("foreground")
+
 canned_section = Section(
     1,
     "Pendahuluan",

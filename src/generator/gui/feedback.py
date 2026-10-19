@@ -85,13 +85,11 @@ class Toast:
 
 
 def siapkan_gaya(root: tk.Misc) -> None:
-    """Gaya khusus tooltip, toast, dan tombol berbahaya yang serasi dengan tema terang aplikasi."""
+    """Gaya khusus tooltip dan toast yang serasi dengan tema terang aplikasi.
+
+    Tombol berbahaya sengaja memakai tk.Button berwarna langsung di tab_report:
+    sv-ttk tidak menggambar latar gaya ttk buatan (teks putih di latar putih).
+    """
     gaya = ttk.Style(root)
     gaya.configure("Tip.TLabel", font=("Segoe UI", 9), foreground="#dddddd", background="#3b3b3b")
     gaya.configure("Toast.TLabel", font=("Segoe UI", 9, "bold"))
-    gaya.configure("Danger.TButton", background="#c0392b", foreground="#ffffff")
-    gaya.map(
-        "Danger.TButton",
-        background=[("active", "#a93226"), ("pressed", "#922b21")],
-        foreground=[("active", "#ffffff"), ("pressed", "#ffffff")],
-    )

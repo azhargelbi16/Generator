@@ -179,8 +179,18 @@ class ReportController:
         btn_link.pack(side="left", padx=4)
         btn_teks = ttk.Button(buttons, text="✍️ Tempel Teks Manual...", command=self._paste_manual)
         btn_teks.pack(side="left", padx=4)
-        self._tombol_hapus = ttk.Button(
-            buttons, text="🗑 Hapus", command=self._hapus_source, style="Danger.TButton"
+        self._tombol_hapus = tk.Button(
+            buttons,
+            text="🗑 Hapus",
+            command=self._hapus_source,
+            bg="#c0392b",
+            fg="#ffffff",
+            activebackground="#a93226",
+            activeforeground="#ffffff",
+            relief="flat",
+            font=("Segoe UI", 9),
+            padx=10,
+            cursor="hand2",
         )
         self._tombol_hapus.pack(side="left", padx=4)
         ToolTip(btn_pdf, "Pilih berkas PDF sumber; teksnya dibaca lalu dianalisis metadata-nya.")
