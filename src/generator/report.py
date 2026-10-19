@@ -133,6 +133,11 @@ def apply_manual_edit(sentence: Sentence, new_text: str) -> Sentence:
     )
 
 
+def display_text(sentence: Sentence, labels: dict[int, str]) -> str:
+    """Teks kalimat untuk dokumen review: sitasi tertulis sebelum tanda baca akhir."""
+    return content.compose(Paragraph([sentence]), labels)
+
+
 def restore_citation(sentence: Sentence) -> Sentence:
     """Salinan kalimat dengan sitasi dibuka kembali; objek lama tidak diubah."""
     return Sentence(

@@ -1,7 +1,7 @@
 """Tes inti report: gerbang ekspor, pending, sitasi, label, dan referensi (Task 17a)."""
 
 from generator.report import (can_export, pending, references_for, labels_for,
-    uncited_ids, non_factual_uids, cited_ids)
+    uncited_ids, non_factual_uids, cited_ids, display_text)
 from generator.verification import verify_sections, STATUS_VERIFIED
 from generator.ai.content import Sentence, Paragraph, Section
 from generator.ai.citation import Author, Source
@@ -91,3 +91,20 @@ def test_labels_no_suffix_from_uncited_source():
            Source([Author("Wijaya", "Ani")], "2021", "C", "J")]
     labels = labels_for(src, {0, 2})
     assert labels[0] == "(Santoso, 2020)" and labels[2] == "(Wijaya, 2021)"
+
+
+def test_display_text_menambah_sitasi_sebelum_tanda_baca():
+    s = Sentence("Hal ini membahayakan alam.", "q", [0, 1])
+    assert display_text(s, {0: "(Sugiyono, 2025)", 1: "(Wijaya, 2021)"}) == (
+        "Hal ini membahayakan alam (Sugiyono, 2025; Wijaya, 2021)."
+    )
+
+
+def test_display_text_tanpa_sumber_dikenal_tanpa_sitasi():
+    s = Sentence("Kalimat polos.", "q", [99])
+    assert display_text(s, {}) == "Kalimat polos."
+
+
+def test_display_text_menghormati_flag_citation_dan_nonfactual():
+    assert display_text(Sentence("A.", citation=False), {0: "(X, 2020)"}) == "A."
+    assert display_text(Sentence("B.", is_factual=False), {0: "(X, 2020)"}) == "B."
