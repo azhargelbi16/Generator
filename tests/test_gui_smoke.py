@@ -20,7 +20,7 @@ def test_gui_smoke_end_to_end():
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     result = subprocess.run(
-        [sys.executable, str(ROOT / ".superpowers" / "gui_smoke.py")],
+        [sys.executable, str(ROOT / "tests" / "gui_smoke.py")],
         capture_output=True,
         text=True,
         cwd=ROOT,

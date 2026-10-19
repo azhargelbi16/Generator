@@ -1,4 +1,4 @@
-﻿"""Tab Buat Laporan bagian 1: sumber, fallback OCR/manual, koreksi metadata (12, Task 16).
+"""Tab Buat Laporan bagian 1: sumber, fallback OCR/manual, koreksi metadata (12, Task 16).
 
 Semua operasi lama (baca PDF/OCR, ambil web, panggilan AI) berjalan lewat
 `worker.run_in_thread` supaya jendela tidak membeku. Kode tidak pernah menebak
@@ -31,6 +31,8 @@ from ..verification import (
 )
 from .worker import run_in_thread
 
+from .feedback import Toast, ToolTip
+
 _LOG = logging.getLogger(__name__)
 
 _DRAFT_ID = "aktif"
@@ -52,12 +54,20 @@ _STATUS_COLORS = {
 def normalize_metadata(doc: dict[str, str]) -> dict[str, str]:
     """Samakan kunci metadata dokumen dengan yang dibaca `merge_metadata`.
 
-    Pembaca PDF dan web memancarkan `date`, sedangkan penggabungan mengharapkan
-    `year`; salin tanpa menghapus nilai asli.
+    Pembaca PDF dan web memancarkan `date` (sering berupa tanggal lengkap atau
+    format internal PDF seperti D:20231019120000), sedangkan penggabungan
+    mengharapkan `year`; ambil 4 digit yang masuk akal sebagai tahun bila ada,
+    tanpa menghapus nilai asli.
     """
     result = dict(doc or {})
-    if result.get("date") and not result.get("year"):
-        result["year"] = result["date"]
+    date = result.get("date")
+    if date and not result.get("year"):
+        kandidat = re.findall(r"\d{4}", str(date))
+        pilihan = next(
+            (k for k in kandidat if 1900 <= int(k) <= 2100),
+            kandidat[0] if kandidat else None,
+        )
+        result["year"] = pilihan if pilihan else str(date)
     return result
 
 
@@ -139,6 +149,8 @@ class ReportController:
         self._build_setup_area(right)
         self._build_result_area(review_page)
 
+        self._widget.bind_all("<Control-Return>", lambda _e: self._generate())
+
         self._restore_draft()
 
     # ------------------------------------------------------------------ UI
@@ -155,16 +167,20 @@ class ReportController:
 
         buttons = ttk.Frame(parent)
         buttons.pack(side="bottom", fill="x")
-        ttk.Button(buttons, text="Tambah PDF...", command=self._add_pdf).pack(
-            side="left", padx=4
+        btn_pdf = ttk.Button(buttons, text="📄 Tambah PDF...", command=self._add_pdf)
+        btn_pdf.pack(side="left", padx=4)
+        btn_link = ttk.Button(buttons, text="🔗 Tambah Link...", command=self._add_link)
+        btn_link.pack(side="left", padx=4)
+        btn_teks = ttk.Button(buttons, text="✍️ Tempel Teks Manual...", command=self._paste_manual)
+        btn_teks.pack(side="left", padx=4)
+        self._tombol_hapus = ttk.Button(
+            buttons, text="🗑 Hapus", command=self._hapus_source, style="Danger.TButton"
         )
-        ttk.Button(buttons, text="Tambah Link...", command=self._add_link).pack(
-            side="left", padx=4
-        )
-        ttk.Button(buttons, text="Tempel Teks Manual...", command=self._paste_manual).pack(
-            side="left", padx=4
-        )
-        ttk.Button(buttons, text="Hapus", command=self._hapus_source).pack(side="left", padx=4)
+        self._tombol_hapus.pack(side="left", padx=4)
+        ToolTip(btn_pdf, "Pilih berkas PDF sumber; teksnya dibaca lalu dianalisis metadata-nya.")
+        ToolTip(btn_link, "Tempel URL artikel/web; teks halaman diambil lalu dianalisis metadata-nya.")
+        ToolTip(btn_teks, "Ketik atau tempel teks sumber langsung tanpa berkas.")
+        ToolTip(self._tombol_hapus, "Hapus sumber terpilih beserta sitasi yang merujuknya.")
         self._status = ttk.Label(buttons, text="")
         self._status.pack(side="left", padx=12)
 
@@ -187,9 +203,9 @@ class ReportController:
             )
         self._authors_frame = ttk.Frame(form)
         self._authors_frame.grid(row=len(self._meta_vars), column=0, columnspan=4, sticky="we")
-        ttk.Button(form, text="Terapkan Koreksi", command=self._apply_corrections).grid(
-            row=len(self._meta_vars) + 1, column=0, columnspan=4, sticky="w", padx=6, pady=6
-        )
+        btn_terapkan = ttk.Button(form, text="✔ Terapkan Koreksi", command=self._apply_corrections)
+        btn_terapkan.grid(row=len(self._meta_vars) + 1, column=0, columnspan=4, sticky="w", padx=6, pady=6)
+        ToolTip(btn_terapkan, "Simpan perbaikan judul, tahun, penulis, dan tautan ke draf.")
 
     def _build_setup_area(self, parent) -> None:
         frame = ttk.LabelFrame(parent, text="Pengaturan laporan")
@@ -240,11 +256,19 @@ class ReportController:
         self._outline_text.bind("<KeyRelease>", lambda _event: self._on_outline_edited())
 
         self._suggest_button = ttk.Button(
-            frame, text="Usulkan Outline", command=self._suggest_outline
+            frame, text="💡 Usulkan Outline", command=self._suggest_outline
         )
         self._suggest_button.grid(row=8, column=0, columnspan=2, sticky="w", padx=6, pady=4)
-        self._generate_button = ttk.Button(frame, text="Generate isi laporan", command=self._generate)
+        self._generate_button = ttk.Button(
+            frame,
+            text="🚀 Generate isi laporan",
+            command=self._generate,
+            style="Accent.TButton",
+        )
         self._generate_button.grid(row=9, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8))
+        ToolTip(self._generate_button, "Menyusun isi laporan dari sumber dan outline Anda (Ctrl+Enter).")
+        self._progres = ttk.Progressbar(frame, mode="indeterminate", length=280)
+        self._progres.grid(row=10, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 8))
         frame.columnconfigure(1, weight=1)
         frame.rowconfigure(7, weight=1)
         self._update_outline_button()
@@ -261,24 +285,31 @@ class ReportController:
         )
         legend.pack(side="top", anchor="w", padx=6)
 
+        self._chip_status = ttk.Label(result, text="Belum ada isi.", foreground="#666666")
+        self._chip_status.pack(side="top", anchor="w", padx=6)
+
         # Baris tombol dipasang lebih dulu agar tidak pernah terdorong keluar
         # layar saat ruang vertikal sempit (ditemukan saat uji manual user).
         actions = ttk.Frame(result)
         actions.pack(side="bottom", fill="x")
         ttk.Button(
-            actions, text="Tandai paragraf selesai", command=self._mark_paragraph_done
+            actions, text="✔ Tandai paragraf selesai", command=self._mark_paragraph_done
         ).pack(side="left", padx=4)
         ttk.Button(
-            actions, text="Tandai kalimat selesai", command=self._mark_done
+            actions, text="✔ Tandai kalimat selesai", command=self._mark_done
         ).pack(side="left", padx=4)
         ttk.Button(
-            actions, text="Tandai semua bukan klaim selesai", command=self._mark_all_nonfactual_done
+            actions, text="☑ Tandai semua bukan klaim selesai", command=self._mark_all_nonfactual_done
         ).pack(side="left", padx=4)
-        ttk.Button(actions, text="Parafrase", command=self._paraphrase).pack(side="left", padx=4)
-        ttk.Button(actions, text="Pulihkan sitasi", command=self._restore_citation_action).pack(
+        ttk.Button(actions, text="✒ Parafrase", command=self._paraphrase).pack(side="left", padx=4)
+        ttk.Button(actions, text="↩ Pulihkan sitasi", command=self._restore_citation_action).pack(
             side="left", padx=4
         )
-        ttk.Button(actions, text="Simpan DOCX", command=self._save_docx).pack(side="left", padx=4)
+        btn_simpan = ttk.Button(
+            actions, text="💾 Simpan DOCX", command=self._save_docx, style="Accent.TButton"
+        )
+        btn_simpan.pack(side="left", padx=4)
+        ToolTip(btn_simpan, "Ekspor laporan ke DOCX; tersedia setelah semua kalimat ditandai.")
 
         edit_row = ttk.Frame(result)
         edit_row.pack(side="bottom", fill="x", pady=(2, 4))
@@ -303,20 +334,29 @@ class ReportController:
 
         container = ttk.Frame(result)
         container.pack(side="top", fill="both", expand=True, padx=4, pady=(2, 4))
+        container.columnconfigure(0, weight=1)
+        # Kolom baca sempit dan di tengah agar baris tidak terlalu panjang
+        # sehingga mata mudah berpindah baris (baris panjang melelahkan).
+        kolom = ttk.Frame(container)
+        kolom.grid(row=0, column=0, sticky="ns")
+        kolom.rowconfigure(0, weight=1)
         self._doc = tk.Text(
-            container,
+            kolom,
             wrap="word",
+            width=92,
             state="disabled",
-            font=("Segoe UI", 10),
-            padx=10,
-            pady=6,
+            font=("Cambria", 12),
+            spacing1=2,
+            padx=16,
+            pady=10,
             relief="flat",
+            background="#fbfaf7",
         )
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self._doc.yview)
+        scrollbar = ttk.Scrollbar(kolom, orient="vertical", command=self._doc.yview)
         self._doc.configure(yscrollcommand=scrollbar.set)
-        self._doc.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        self._doc.tag_config("judul_bab", font=("Segoe UI", 11, "bold"), spacing1=10, spacing3=2)
+        self._doc.grid(row=0, column=0, sticky="ns")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self._doc.tag_config("judul_bab", font=("Segoe UI Semibold", 13), spacing1=18, spacing3=4)
         self._doc.tag_config(STATUS_VERIFIED, foreground=_STATUS_COLORS[STATUS_VERIFIED])
         self._doc.tag_config(STATUS_UNVERIFIED, foreground=_STATUS_COLORS[STATUS_UNVERIFIED])
         self._doc.tag_config(
@@ -365,16 +405,35 @@ class ReportController:
                     self._doc.insert("end", " ")
                 if awal_para is not None:
                     self._paragraph_ranges.append((awal_para, akhir_para, uids_para))
-                self._doc.insert("end", "\n")
-            self._doc.insert("end", "\n")
+                self._doc.insert("end", "\n\n")
+            # Pemisah antarbab hanya satu baris kosong; judul bab sudah
+            # diberi jarak atas lewat gaya judul_bab.
         if not self._sentence_ranges:
             self._doc.insert(
                 "end",
                 "Belum ada isi. Isi outline, tambahkan sumber, lalu klik Generate isi laporan.",
                 ("judul_bab",),
             )
+        self._perbarui_chip()
         self._doc.config(state="disabled")
         self._doc.yview_moveto(posisi[0])
+
+    def _perbarui_chip(self) -> None:
+        """Ringkas jumlah status kalimat AI dan yang sudah ditandai selesai."""
+        dari_ai = [item for item in self._statuses if item.sentence.origin == "ai"]
+        if not dari_ai:
+            self._chip_status.config(text="Belum ada isi.")
+            return
+        hijau = sum(1 for item in dari_ai if item.status == STATUS_VERIFIED)
+        merah = sum(1 for item in dari_ai if item.status == STATUS_UNVERIFIED)
+        abu = sum(1 for item in dari_ai if item.status == STATUS_NON_FACTUAL)
+        selesai = len(self._done & set(self._sentence_ranges))
+        self._chip_status.config(
+            text=(
+                f"Kalimat AI: terverifikasi {hijau} · belum terverifikasi {merah} · "
+                f"bukan klaim {abu} · ditandai selesai {selesai}"
+            )
+        )
 
     def _status_by_uid(self) -> dict[str, str]:
         return {item.sentence.uid: item.status for item in self._statuses}
@@ -664,6 +723,7 @@ class ReportController:
         self._refresh_source_list()
         self._save_draft()
         self._status.config(text="Koreksi metadata diterapkan.")
+        Toast(self._widget, "Koreksi diterapkan")
 
     def _ai_client(self) -> AIClient:
         return AIClient(config.load_config(paths.CONFIG_PATH))
@@ -676,6 +736,7 @@ class ReportController:
         self._on_source_select()
         self._save_draft()
         self._status.config(text=f"Sumber {record['kind']} ditambahkan ({len(self._sources)} total).")
+        Toast(self._widget, f"Sumber {record['kind']} ditambahkan")
 
     def _source_failed(self, error: Exception) -> None:
         if isinstance(error, pdf_reader.SourceReadError):
@@ -699,17 +760,32 @@ class ReportController:
     def _add_pdf_core(self, path: Path) -> None:
         self._status.config(text="Membaca PDF (bisa lama bila scan)...")
         client = self._ai_client()
+        catatan = {"meta_ai_gagal": False}
 
         def work():
             text = pdf_reader.extract_text_or_ocr(path)
             meta = normalize_metadata(pdf_reader.extract_metadata(path))
-            source = bibliography.extract_source(text, client)
+            try:
+                source = bibliography.extract_source(text, client)
+            except Exception:
+                catatan["meta_ai_gagal"] = True
+                source = Source([], "", "")
             return source_to_record(bibliography.merge_metadata(source, meta), text, "pdf")
 
-        run_in_thread(self._widget, work, on_success=self._append_source, on_error=self._source_failed)
+        def selesai(record: dict) -> None:
+            self._append_source(record)
+            if catatan["meta_ai_gagal"]:
+                self._status.config(
+                    text=self._status.cget("text")
+                    + " Metadata otomatis kosong; lengkapi lewat Koreksi."
+                )
+
+        run_in_thread(self._widget, work, on_success=selesai, on_error=self._source_failed)
 
     def _add_link(self) -> None:
-        url = simpledialog.askstring("Tambah Sumber Link", "URL sumber:", parent=self)
+        url = simpledialog.askstring(
+            "Tambah Sumber Link", "URL sumber:", parent=self._widget
+        )
         if not url or not url.strip():
             return
         self._add_link_core(url.strip())
@@ -717,19 +793,32 @@ class ReportController:
     def _add_link_core(self, url: str) -> None:
         self._status.config(text="Mengambil halaman web...")
         client = self._ai_client()
+        catatan = {"meta_ai_gagal": False}
 
         def work():
-            text = web_reader.fetch_text(url)
-            meta = normalize_metadata(web_reader.fetch_metadata(url))
-            source = bibliography.extract_source(text, client)
+            text, meta = web_reader.fetch(url)
+            meta = normalize_metadata(meta)
+            try:
+                source = bibliography.extract_source(text, client)
+            except Exception:
+                catatan["meta_ai_gagal"] = True
+                source = Source([], "", "")
             return source_to_record(bibliography.merge_metadata(source, meta), text, "web")
 
-        run_in_thread(self._widget, work, on_success=self._append_source, on_error=self._source_failed)
+        def selesai(record: dict) -> None:
+            self._append_source(record)
+            if catatan["meta_ai_gagal"]:
+                self._status.config(
+                    text=self._status.cget("text")
+                    + " Metadata otomatis kosong; lengkapi lewat Koreksi."
+                )
+
+        run_in_thread(self._widget, work, on_success=selesai, on_error=self._source_failed)
 
     def _paste_manual(self) -> None:
-        dialog = tk.Toplevel(self)
+        dialog = tk.Toplevel(self._widget)
         dialog.title("Tempel Teks Manual")
-        dialog.transient(self.winfo_toplevel())
+        dialog.transient(self._widget.winfo_toplevel())
         dialog.grab_set()
         ttk.Label(
             dialog, text="Tempel teks sumber di bawah, lalu klik OK."
@@ -907,6 +996,13 @@ class ReportController:
                 logo_path = Path(item.path)
         safe_judul = re.sub(r"[^\w\- ]", "", judul).strip().replace(" ", "_") or "laporan"
         out_path = paths.OUTPUT_DIR / f"{safe_judul}.docx"
+        if out_path.exists():
+            if not messagebox.askyesno(
+                "Berkas sudah ada",
+                f"'{out_path.name}' sudah ada di folder output.\nTimpa berkas lama?",
+            ):
+                self._status.config(text="Simpan dibatalkan.")
+                return
         template_path = Path(self._template.path)
         # Salinan data, bukan referensi hidup: suntingan kalimat saat render
         # tidak boleh mengubah isi dokumen yang sedang disusun.
@@ -930,6 +1026,8 @@ class ReportController:
         run_in_thread(self._widget, work, on_success=on_success, on_error=on_error)
 
     def _generate(self) -> None:
+        if self._generate_button.cget("state") == "disabled":
+            return
         outline = self._outline_content()
         if not outline:
             messagebox.showinfo(
@@ -943,6 +1041,7 @@ class ReportController:
             return
         topic = self._judul_var.get().strip() or "Laporan"
         self._generate_button.config(state="disabled")
+        self._progres.start(12)
         self._generate_started = time.monotonic()
         self._generate_tick = None
         self._tick_generate()
@@ -969,7 +1068,14 @@ class ReportController:
             self._reverify()
             self._render_statuses()
             self._save_draft()
-            self._finish_generate(f"Generate selesai: {len(self._sections)} bab.")
+            pesan = f"Generate selesai: {len(self._sections)} bab."
+            diminta = len(self._outline_content())
+            if len(self._sections) < diminta:
+                pesan += (
+                    f" Kurang dari {diminta} bab yang diminta;"
+                    " jawaban AI sebagian tidak terbaca, coba klik Generate lagi."
+                )
+            self._finish_generate(pesan)
             self._notebook.select(self._review_page)
 
         def on_error(error) -> None:
@@ -989,6 +1095,7 @@ class ReportController:
         if self._generate_tick is not None:
             self._widget.after_cancel(self._generate_tick)
             self._generate_tick = None
+        self._progres.stop()
         self._generate_button.config(state="normal")
         self._status.config(text=message)
 

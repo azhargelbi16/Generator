@@ -102,7 +102,7 @@ PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali
 
 | Folder | Isi |
 | --- | --- |
-| `data\` | Basis data SQLite, `config.json`, logo, template, draf, cache OCR, dan berkas log `app.log` |
+| `data\` | Basis data SQLite, `config.json`, logo, template, draf, dan berkas log `app.log` |
 | `output\` | Dokumen DOCX hasil ekspor |
 
 ## Troubleshooting

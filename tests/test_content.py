@@ -110,6 +110,16 @@ def test_prompt_labels_each_chunk_with_source_id():
     assert "[sumber 0]" in joined and "[sumber 1]" in joined
 
 
-def test_bad_json_returns_empty_not_crash():
-    assert generate_sections("tema", ["X"], [Source([Author("Santoso", "Budi")], "2020", "T", "J")],
-                             ["teks"], FakeClient(["bukan json"])) == []
+def test_bad_json_raises_after_all_batches_fail():
+    with pytest.raises(ValueError):
+        generate_sections("tema", ["X"], [Source([Author("Santoso", "Budi")], "2020", "T", "J")],
+                          ["teks"], FakeClient(["bukan json"]))
+
+
+def test_partial_bad_batch_keeps_good_sections():
+    long_text = "kalimat " * 2000
+    c = FakeClient(["bukan json", REPLY])
+    secs = generate_sections("tema", ["Pendahuluan"],
+                             [Source([Author("Santoso", "Budi")], "2020", "T", "J")],
+                             [long_text], c, max_prompt_chars=500)
+    assert secs and secs[0].title == "Pendahuluan"

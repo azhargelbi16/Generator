@@ -55,6 +55,12 @@ def build_app() -> tk.Tk | None:
 
     root = tk.Tk()
     root.title("Generator Laporan")
+    import sv_ttk
+
+    from .feedback import siapkan_gaya
+
+    sv_ttk.set_theme("light", root)
+    siapkan_gaya(root)
     # Sesuaikan tinggi jendela dengan layar agar tombol di bagian bawah tidak
     # pernah terpotong taskbar pada layar kecil atau scaling tinggi.
     screen_w = root.winfo_screenwidth()

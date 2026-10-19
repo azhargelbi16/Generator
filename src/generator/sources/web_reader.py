@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 
 from .errors import SourceReadError
 
-__all__ = ["SourceReadError", "fetch_text", "fetch_metadata"]
+__all__ = ["SourceReadError", "fetch", "fetch_text", "fetch_metadata"]
 
 TIMEOUT = 30
 
@@ -34,15 +34,13 @@ def _soup(url: str) -> BeautifulSoup:
     return BeautifulSoup(response.text, _parser(_content_type(response)))
 
 
-def fetch_text(url: str) -> str:
-    soup = _soup(url)
+def _text_from_soup(soup: BeautifulSoup) -> str:
     for tag in soup(["script", "style"]):
         tag.decompose()
     return soup.get_text(" ", strip=True)
 
 
-def fetch_metadata(url: str) -> dict[str, str]:
-    soup = _soup(url)
+def _metadata_from_soup(soup: BeautifulSoup) -> dict[str, str]:
     result: dict[str, str] = {}
     if soup.title and soup.title.string:
         result["title"] = soup.title.string.strip()
@@ -58,3 +56,17 @@ def fetch_metadata(url: str) -> dict[str, str]:
         if tag and tag.get("content"):
             result[field] = tag["content"].strip()
     return result
+
+
+def fetch(url: str) -> tuple[str, dict[str, str]]:
+    """Ambil teks dan metadata dalam SATU permintaan HTTP."""
+    soup = _soup(url)
+    return _text_from_soup(soup), _metadata_from_soup(soup)
+
+
+def fetch_text(url: str) -> str:
+    return _text_from_soup(_soup(url))
+
+
+def fetch_metadata(url: str) -> dict[str, str]:
+    return _metadata_from_soup(_soup(url))

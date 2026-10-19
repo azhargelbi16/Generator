@@ -165,5 +165,9 @@ class TemplateTab(ttk.Frame):
         ):
             return
         self._db.delete_template(item.id)
+        try:
+            Path(item.path).unlink(missing_ok=True)
+        except OSError:
+            pass
         self.refresh()
         self._status.config(text=f"Template '{item.nama}' dihapus.")

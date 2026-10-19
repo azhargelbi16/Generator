@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from uuid import uuid4
 
 from ..sources.chunking import chunk_text
 from . import prompts
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -192,11 +195,22 @@ def generate_sections(
             chunk_refs.append((source_id, chunk.text))
 
     sections: list[Section] = []
+    total = 0
+    gagal = 0
     for batch in _batches(chunk_refs, max_prompt_chars):
+        total += 1
         reply = client.chat(prompts.content_prompt(topic, outline, sources, batch), json_mode=True)
         data = _first_json_object(reply)
-        if data is not None:
-            _merge_sections(sections, _sections_from_dict(data))
+        if data is None:
+            gagal += 1
+            continue
+        _merge_sections(sections, _sections_from_dict(data))
+    if total and gagal == total:
+        raise ValueError("Respons AI tidak terbaca (JSON tidak valid) pada semua batch.")
+    if gagal:
+        _logger.warning(
+            "Generate: %d dari %d batch AI tidak terbaca; bab bisa kurang.", gagal, total
+        )
     return _order_by_outline(sections, outline)
 
 

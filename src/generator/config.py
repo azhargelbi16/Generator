@@ -22,6 +22,13 @@ def default_config() -> Config:
     return Config()
 
 
+def _coerce_float(value, fallback: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def load_config(path: Path) -> Config:
     """Baca konfigurasi; file hilang atau rusak dikembalikan sebagai default."""
     try:
@@ -35,7 +42,7 @@ def load_config(path: Path) -> Config:
         ai_base_url=str(raw.get("ai_base_url", base.ai_base_url)),
         ai_api_key=str(raw.get("ai_api_key", base.ai_api_key)),
         ai_model=str(raw.get("ai_model", base.ai_model)),
-        ai_temperature=float(raw.get("ai_temperature", base.ai_temperature)),
+        ai_temperature=_coerce_float(raw.get("ai_temperature"), base.ai_temperature),
     )
 
 

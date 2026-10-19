@@ -68,7 +68,7 @@ def run_in_thread(widget, work: Callable, on_success=None, on_error=None) -> Non
         _gc_pause()
         try:
             results.put(("ok", work()))
-        except Exception as error:  # semua kegagalan diteruskan ke UI
+        except BaseException as error:  # semua kegagalan diteruskan ke UI
             results.put(("err", error))
 
     threading.Thread(target=target, daemon=True, name="generator-worker").start()

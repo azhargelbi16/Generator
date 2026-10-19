@@ -8,6 +8,7 @@ from tkinter import ttk
 
 from ..ai import client
 from ..config import Config, load_config, save_config
+from .feedback import Toast, ToolTip
 from .worker import run_in_thread
 
 _PRIVACY_NOTE = (
@@ -74,11 +75,19 @@ class SettingsTab(ttk.Frame):
 
         buttons = ttk.Frame(self)
         buttons.pack(fill="x", pady=8)
-        ttk.Button(buttons, text="Simpan", command=self._save).pack(side="left", padx=4)
+        btn_simpan = ttk.Button(buttons, text="Simpan", command=self._save)
+        btn_simpan.pack(side="left", padx=4)
         self._tombol_tes = ttk.Button(buttons, text="Tes Koneksi", command=self._test)
         self._tombol_tes.pack(side="left", padx=4)
+        self._progres = ttk.Progressbar(buttons, mode="indeterminate", length=150)
+        self._progres.pack(side="left", padx=4)
         self._status = ttk.Label(buttons, text="")
         self._status.pack(side="left", padx=12)
+        ToolTip(btn_simpan, "Simpan endpoint, key, model, dan temperatur ke config.json.")
+        ToolTip(
+            self._tombol_tes,
+            "Mengirim pesan uji ke layanan AI untuk memastikan koneksi dan model benar.",
+        )
 
         ttk.Label(self, text=_PRIVACY_NOTE, foreground="#666666", wraplength=760, justify="left").pack(
             fill="x", pady=(6, 0)
@@ -115,6 +124,7 @@ class SettingsTab(ttk.Frame):
             return
         save_config(cfg, self._config_path)
         self._status.config(text="Pengaturan tersimpan.")
+        Toast(self, "Pengaturan tersimpan")
 
     def _cek_suhu_langsung(self, _event=None) -> None:
         """Peringatan segera saat mengetik: petunjuk merah jika suhu tidak sah."""
@@ -133,6 +143,7 @@ class SettingsTab(ttk.Frame):
             return
         self._status.config(text="Menguji koneksi...")
         self._tombol_tes.config(state="disabled", text="Menguji...")
+        self._progres.start(12)
 
         def work():
             return client.check_connection(client.AIClient(cfg))
@@ -143,10 +154,12 @@ class SettingsTab(ttk.Frame):
                 self._status.config(text=f"Koneksi berhasil ({cfg.ai_model}).")
             else:
                 self._status.config(text=f"Gagal: {message}")
+            self._progres.stop()
             self._tombol_tes.config(state="normal", text="Tes Koneksi")
 
         def on_error(error) -> None:
             self._status.config(text=f"Gagal: {error}")
+            self._progres.stop()
             self._tombol_tes.config(state="normal", text="Tes Koneksi")
 
         run_in_thread(self, work, on_success=on_success, on_error=on_error)
