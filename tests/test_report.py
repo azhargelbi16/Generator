@@ -108,3 +108,9 @@ def test_display_text_tanpa_sumber_dikenal_tanpa_sitasi():
 def test_display_text_menghormati_flag_citation_dan_nonfactual():
     assert display_text(Sentence("A.", citation=False), {0: "(X, 2020)"}) == "A."
     assert display_text(Sentence("B.", is_factual=False), {0: "(X, 2020)"}) == "B."
+
+
+def test_display_text_faktual_tanpa_sitasi_tetap_polos():
+    assert display_text(Sentence("Faktual tanpa sitasi."), {0: "(X, 2020)"}) == (
+        "Faktual tanpa sitasi."
+    )

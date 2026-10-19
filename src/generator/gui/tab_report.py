@@ -377,6 +377,11 @@ class ReportController:
         posisi = self._doc.yview()
         self._selected_uid = None
         self._selected_para_uids = []
+        if self._aksi_frame is not None:
+            try:
+                self._aksi_frame.destroy()
+            except tk.TclError:
+                _LOG.warning("Baris aksi lama gagal dimusnahkan saat dokumen dibangun ulang.")
         self._aksi_frame = None
         self._aksi_index = None
         self._active_edit: tuple[str, str, str, str] | None = None
@@ -474,6 +479,8 @@ class ReportController:
         keysym = getattr(event, "keysym", "")
         if getattr(event, "state", 0) & 0x4 and keysym.lower() in ("c", "a"):
             return None  # salin / pilih semua tetap boleh saat membaca
+        if keysym in ("Return", "KP_Enter"):
+            return "break"  # kalimat satu baris; Enter akan membelah tampilan dokumen
         if self._active_edit is None:
             return "break"
         _uid, awal, akhir, _teks_asli = self._active_edit
@@ -493,6 +500,10 @@ class ReportController:
             return "break"
         if self._doc.compare(insert, "<", awal) or self._doc.compare(insert, ">", akhir):
             return "break"
+        if keysym == "BackSpace" and self._doc.compare(insert, "<=", awal):
+            return "break"  # menghapus karakter sebelum kalimat aktif
+        if keysym == "Delete" and self._doc.compare(insert, ">=", akhir):
+            return "break"  # menghapus karakter sesudah kalimat aktif
         return None
 
     def _pasang_baris_aksi(self, uid: str) -> None:
@@ -521,7 +532,7 @@ class ReportController:
             try:
                 self._doc.delete(self._aksi_index)
             except tk.TclError:
-                pass
+                _LOG.warning("Baris aksi tidak lagi ada di dokumen saat dilepas.")
             self._aksi_frame = None
             self._aksi_index = None
         self._doc.tag_remove("terpilih", "1.0", "end")

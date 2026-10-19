@@ -516,6 +516,25 @@ report_tab._doc.mark_set("insert", f"{awal} linestart")
 assert report_tab._on_doc_key(kelas) == "break", "Ketikan di luar kalimat aktif harus diblok"
 report_tab._doc.mark_set("insert", awal)
 assert report_tab._on_doc_key(kelas) is None, "Ketikan di dalam kalimat aktif harus boleh"
+
+# Enter membelah kalimat; BackSpace/Delete di ujung rentang mengenai karimat lain.
+# Ketiganya harus diblok meski kursor masih di dalam atau di tepi rentang.
+kelas.keysym = "Return"
+report_tab._doc.mark_set("insert", awal)
+assert report_tab._on_doc_key(kelas) == "break", "Enter harus diblok di dalam kalimat aktif"
+kelas.keysym = "BackSpace"
+report_tab._doc.mark_set("insert", awal)
+assert report_tab._on_doc_key(kelas) == "break", "BackSpace di tepi awal harus diblok"
+kelas.keysym = "Delete"
+report_tab._doc.mark_set("insert", akhir)
+assert report_tab._on_doc_key(kelas) == "break", "Delete di tepi akhir harus diblok"
+
+# Seleksi yang melintasi batas kalimat ditolak walau kursor di dalam rentang.
+report_tab._doc.tag_add("sel", f"{awal}+2c", f"{akhir}+2c")
+kelas.keysym = "a"
+report_tab._doc.mark_set("insert", f"{awal}+3c")
+assert report_tab._on_doc_key(kelas) == "break", "Seleksi melintasi batas kalimat harus diblok"
+report_tab._doc.tag_remove("sel", "1.0", "end")
 report_tab._deselect()
 
 draft_raw = json.loads(draft_file.read_text(encoding="utf-8"))
