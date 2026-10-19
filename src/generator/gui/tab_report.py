@@ -158,6 +158,7 @@ class ReportTab(ttk.Frame):
         ttk.Button(buttons, text="Tempel Teks Manual...", command=self._paste_manual).pack(
             side="left", padx=4
         )
+        ttk.Button(buttons, text="Hapus", command=self._hapus_source).pack(side="left", padx=4)
         self._status = ttk.Label(buttons, text="")
         self._status.pack(side="left", padx=12)
 
@@ -258,7 +259,12 @@ class ReportTab(ttk.Frame):
         # layar saat ruang vertikal sempit (ditemukan saat uji manual user).
         actions = ttk.Frame(result)
         actions.pack(side="bottom", fill="x")
-        ttk.Button(actions, text="Tandai selesai", command=self._mark_done).pack(side="left", padx=4)
+        ttk.Button(
+            actions, text="Tandai paragraf selesai", command=self._mark_paragraph_done
+        ).pack(side="left", padx=4)
+        ttk.Button(
+            actions, text="Tandai kalimat selesai", command=self._mark_done
+        ).pack(side="left", padx=4)
         ttk.Button(
             actions, text="Tandai semua bukan klaim selesai", command=self._mark_all_nonfactual_done
         ).pack(side="left", padx=4)
@@ -281,7 +287,8 @@ class ReportTab(ttk.Frame):
 
         self._info = ttk.Label(
             result,
-            text="Klik kalimat untuk memilih; klik ganda untuk langsung tandai selesai.",
+            text="Klik kalimat untuk memilih paragrafnya; klik ganda kalimat untuk langsung "
+            "tandai selesai.",
             foreground="#666666",
             wraplength=560,
             justify="left",
@@ -317,20 +324,26 @@ class ReportTab(ttk.Frame):
         self._doc.bind("<Double-Button-1>", self._on_doc_double_click)
 
         self._selected_uid: str | None = None
+        self._selected_para_uids: list[str] = []
         self._sentence_ranges: dict[str, tuple[str, str]] = {}
+        self._paragraph_ranges: list[tuple[str, str, list[str]]] = []
         self._render_statuses()
 
     def _render_statuses(self) -> None:
         """Bangun ulang dokumen baca; pemetaan rentang teks ke kalimat satu banding satu."""
         posisi = self._doc.yview()
         self._selected_uid = None
+        self._selected_para_uids = []
         self._doc.config(state="normal")
         self._doc.delete("1.0", "end")
         self._sentence_ranges = {}
+        self._paragraph_ranges = []
         status_by_uid = self._status_by_uid()
         for section in self._sections:
             self._doc.insert("end", f"{section.title}\n", ("judul_bab",))
             for paragraph in section.paragraphs:
+                awal_para = akhir_para = None
+                uids_para: list[str] = []
                 for sentence in paragraph.sentences:
                     status = status_by_uid.get(sentence.uid, STATUS_UNVERIFIED)
                     awal = self._doc.index("end-1c")
@@ -339,7 +352,13 @@ class ReportTab(ttk.Frame):
                     self._sentence_ranges[sentence.uid] = (awal, akhir)
                     if sentence.uid in self._done:
                         self._doc.tag_add("selesai", awal, akhir)
+                    if awal_para is None:
+                        awal_para = awal
+                    akhir_para = akhir
+                    uids_para.append(sentence.uid)
                     self._doc.insert("end", " ")
+                if awal_para is not None:
+                    self._paragraph_ranges.append((awal_para, akhir_para, uids_para))
                 self._doc.insert("end", "\n")
             self._doc.insert("end", "\n")
         if not self._sentence_ranges:
@@ -387,21 +406,46 @@ class ReportTab(ttk.Frame):
             self._mark_done()
 
     def _select_sentence(self, uid: str) -> None:
-        if self._selected_uid and self._selected_uid in self._sentence_ranges:
-            lama = self._sentence_ranges[self._selected_uid]
-            self._doc.tag_remove("terpilih", lama[0], lama[1])
+        if self._selected_para_uids:
+            lama = self._paragraph_range_of(self._selected_para_uids)
+            if lama:
+                self._doc.tag_remove("terpilih", lama[0], lama[1])
         self._selected_uid = uid
-        awal, akhir = self._sentence_ranges[uid]
-        self._doc.tag_add("terpilih", awal, akhir)
+        for awal, akhir, uids in self._paragraph_ranges:
+            if uid in uids:
+                self._selected_para_uids = uids
+                self._doc.tag_add("terpilih", awal, akhir)
+                break
         status = self._uid_status(uid)
         selesai = "sudah ditandai selesai" if uid in self._done else "belum ditandai selesai"
+        sudah = sum(1 for u in self._selected_para_uids if u in self._done)
         self._info.config(
-            text=f"[{self._section_title_of(uid)}] {_STATUS_LABELS[status]}; {selesai}."
+            text=f"[{self._section_title_of(uid)}] paragraf ini {sudah}/{len(self._selected_para_uids)} "
+            f"kalimat selesai; kalimat yang diklik {status} ({selesai})."
         )
         sentence = self._sentence_by_uid(uid)
         self._edit_var.set(sentence.text if sentence else "")
         self._edit_entry.config(state="normal")
         self._apply_edit_button.config(state="normal")
+
+    def _paragraph_range_of(self, uids: list[str]):
+        for awal, akhir, daftar in self._paragraph_ranges:
+            if daftar == uids:
+                return (awal, akhir)
+        return None
+
+    def _mark_paragraph_done(self) -> None:
+        if not self._selected_para_uids:
+            self._info.config(text="Klik dulu salah satu kalimat pada paragraf yang ingin ditandai.")
+            return
+        self._done.update(self._selected_para_uids)
+        rentang = self._paragraph_range_of(self._selected_para_uids)
+        if rentang:
+            self._doc.tag_add("selesai", rentang[0], rentang[1])
+        self._save_draft()
+        self._info.config(
+            text=f"Paragraf ditandai selesai ({len(self._selected_para_uids)} kalimat)."
+        )
 
     def _apply_edit(self) -> None:
         if self._selected_uid is None:
@@ -520,6 +564,28 @@ class ReportTab(ttk.Frame):
     def _selected_index(self) -> int | None:
         selection = self._source_listbox.curselection()
         return selection[0] if selection else None
+
+    def _hapus_source(self) -> None:
+        """Buang sumber terpilih; sitasi yang merujuknya dilepas, indeks lain digeser."""
+        index = self._selected_index()
+        if index is None:
+            self._status.config(text="Pilih dulu sumbernya di daftar.")
+            return
+        judul = self._sources[index].get("title") or "tanpa judul"
+        if not messagebox.askyesno(
+            "Hapus sumber",
+            f"Hapus sumber \"{judul}\"?\n\nSitasi yang merujuk sumber ini akan dilepas.",
+        ):
+            return
+        del self._sources[index]
+        for sentence in self._iter_sentences():
+            sentence.source_ids = [
+                i - 1 if i > index else i for i in sentence.source_ids if i != index
+            ]
+            if not sentence.source_ids:
+                sentence.citation = False
+        self._refresh_source_list()
+        self._after_structure_change("Sumber dihapus; sitasi yang merujuknya dilepas.")
 
     def _on_source_select(self) -> None:
         index = self._selected_index()
