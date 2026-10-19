@@ -279,8 +279,8 @@ class ReportController:
 
         legend = ttk.Label(
             result,
-            text="Hijau = terverifikasi Â· Merah = belum terverifikasi Â· Abu-abu = bukan klaim "
-            "Â· Latar hijau = sudah ditandai selesai",
+            text="Klik kalimat untuk melihat statusnya dan memperbaikinya langsung di dokumen. "
+            "Warna hanya muncul pada kalimat yang diklik.",
             foreground="#666666",
         )
         legend.pack(side="top", anchor="w", padx=6)
@@ -345,26 +345,30 @@ class ReportController:
             wrap="word",
             width=92,
             state="disabled",
-            font=("Cambria", 12),
+            font=("Times New Roman", 12),
             spacing1=2,
-            padx=16,
-            pady=10,
+            padx=32,
+            pady=24,
             relief="flat",
-            background="#fbfaf7",
+            background="#ffffff",
         )
         scrollbar = ttk.Scrollbar(kolom, orient="vertical", command=self._doc.yview)
         self._doc.configure(yscrollcommand=scrollbar.set)
         self._doc.grid(row=0, column=0, sticky="ns")
         scrollbar.grid(row=0, column=1, sticky="ns")
-        self._doc.tag_config("judul_bab", font=("Segoe UI Semibold", 13), spacing1=18, spacing3=4)
-        self._doc.tag_config(STATUS_VERIFIED, foreground=_STATUS_COLORS[STATUS_VERIFIED])
-        self._doc.tag_config(STATUS_UNVERIFIED, foreground=_STATUS_COLORS[STATUS_UNVERIFIED])
         self._doc.tag_config(
-            STATUS_NON_FACTUAL,
-            foreground=_STATUS_COLORS[STATUS_NON_FACTUAL],
-            font=("Segoe UI", 10, "italic"),
+            "judul_laporan",
+            font=("Times New Roman", 16, "bold"),
+            justify="center",
+            spacing3=10,
         )
-        self._doc.tag_config("selesai", background="#dcf5e5")
+        self._doc.tag_config(
+            "judul_bab",
+            font=("Times New Roman", 14, "bold"),
+            justify="center",
+            spacing1=18,
+            spacing3=6,
+        )
         self._doc.tag_config("terpilih", background="#fff3bf")
         self._doc.bind("<Button-1>", self._on_doc_click)
         self._doc.bind("<Double-Button-1>", self._on_doc_double_click)
@@ -384,20 +388,25 @@ class ReportController:
         self._doc.delete("1.0", "end")
         self._sentence_ranges = {}
         self._paragraph_ranges = []
-        status_by_uid = self._status_by_uid()
+        labels = report.labels_for(
+            [record_to_source(r) for r in self._sources],
+            report.cited_ids(self._statuses),
+        )
+        judul = self._judul_var.get().strip()
+        if judul:
+            self._doc.insert("end", judul + "\n\n", ("judul_laporan",))
         for section in self._sections:
             self._doc.insert("end", f"{section.title}\n", ("judul_bab",))
             for paragraph in section.paragraphs:
                 awal_para = akhir_para = None
                 uids_para: list[str] = []
                 for sentence in paragraph.sentences:
-                    status = status_by_uid.get(sentence.uid, STATUS_UNVERIFIED)
                     awal = self._doc.index("end-1c")
-                    self._doc.insert("end", sentence.text, (f"uid:{sentence.uid}", status))
+                    self._doc.insert(
+                        "end", report.display_text(sentence, labels), (f"uid:{sentence.uid}",)
+                    )
                     akhir = self._doc.index("end-1c")
                     self._sentence_ranges[sentence.uid] = (awal, akhir)
-                    if sentence.uid in self._done:
-                        self._doc.tag_add("selesai", awal, akhir)
                     if awal_para is None:
                         awal_para = awal
                     akhir_para = akhir
@@ -430,8 +439,8 @@ class ReportController:
         selesai = len(self._done & set(self._sentence_ranges))
         self._chip_status.config(
             text=(
-                f"Kalimat AI: terverifikasi {hijau} · belum terverifikasi {merah} · "
-                f"bukan klaim {abu} · ditandai selesai {selesai}"
+                f"Sudah selesai diverifikasi {selesai} dari {len(dari_ai)} kalimat. "
+                f"Terverifikasi {hijau}, belum terverifikasi {merah}, bukan klaim {abu}."
             )
         )
 

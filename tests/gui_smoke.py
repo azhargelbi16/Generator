@@ -406,14 +406,19 @@ assert pump(root3, lambda: len(report_tab._statuses) == 3), "Status kalimat tida
 assert pump(root3, lambda: len(report_tab._sentence_ranges) == 3), "Kalimat tidak terbangun di dokumen"
 status_dok = {report_tab._uid_status(u) for u in report_tab._sentence_ranges}
 assert status_dok == {"terverifikasi", "tidak_terverifikasi", "bukan_klaim_faktual"}, status_dok
-assert "terverifikasi" in report_tab._chip_status.cget("text"), report_tab._chip_status.cget("text")
-assert "ditandai selesai" in report_tab._chip_status.cget("text"), report_tab._chip_status.cget("text")
+assert "Sudah selesai diverifikasi" in report_tab._chip_status.cget("text"), report_tab._chip_status.cget("text")
+assert "dari 3 kalimat" in report_tab._chip_status.cget("text"), report_tab._chip_status.cget("text")
 
-# Kenyamanan baca: kolom sempit di tengah, font besar, jarak paragraf lega
+# Tampilan dokumen bersih ala Word: TNR 12, tanpa warna status, sitasi inline
 isi_dok = report_tab._doc.get("1.0", "end-1c")
 assert "\n\n" in isi_dok, "Paragraf tidak dipisah baris kosong"
-assert report_tab._doc.cget("font") == "Cambria 12", report_tab._doc.cget("font")
+assert report_tab._doc.cget("font") == "{Times New Roman} 12", report_tab._doc.cget("font")
 assert report_tab._doc.cget("width") == 92, report_tab._doc.cget("width")
+semua_tag = set()
+for uid in report_tab._sentence_ranges:
+    semua_tag.update(report_tab._doc.tag_names(report_tab._sentence_ranges[uid][0]))
+assert not ({"terverifikasi", "tidak_terverifikasi", "bukan_klaim_faktual"} & semua_tag), semua_tag
+assert "Santoso" in isi_dok and "2020" in isi_dok, "Sitasi inline tidak tercetak di dokumen"
 assert not hasattr(report_tab, "_tombol_tema"), "Fitur mode gelap harus dihapus"
 
 ok, message = report_module.can_export(report_tab._statuses)
