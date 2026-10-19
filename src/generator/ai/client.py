@@ -8,7 +8,7 @@ import requests
 
 from ..config import Config
 
-TIMEOUT = 60
+TIMEOUT = 180
 
 
 class AIError(Exception):
