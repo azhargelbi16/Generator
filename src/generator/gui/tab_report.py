@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import tkinter as tk
 from datetime import date
 from pathlib import Path
@@ -180,7 +181,7 @@ class ReportTab(ttk.Frame):
 
     def _build_setup_area(self, parent) -> None:
         frame = ttk.LabelFrame(parent, text="Pengaturan laporan")
-        frame.pack(side="top", fill="both", expand=True)
+        frame.pack(side="top", fill="x")
 
         profil = self._db.get_profil()
         profil_text = (
@@ -230,9 +231,8 @@ class ReportTab(ttk.Frame):
             frame, text="Usulkan Outline", command=self._suggest_outline
         )
         self._suggest_button.grid(row=8, column=0, columnspan=2, sticky="w", padx=6, pady=4)
-        ttk.Button(frame, text="Generate isi laporan", command=self._generate).grid(
-            row=9, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8)
-        )
+        self._generate_button = ttk.Button(frame, text="Generate isi laporan", command=self._generate)
+        self._generate_button.grid(row=9, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8))
         frame.columnconfigure(1, weight=1)
         frame.rowconfigure(7, weight=1)
         self._update_outline_button()
@@ -812,7 +812,10 @@ class ReportTab(ttk.Frame):
             )
             return
         topic = self._judul_var.get().strip() or "Laporan"
-        self._status.config(text="Menyusun isi laporan; bisa memakan waktu beberapa menit...")
+        self._generate_button.config(state="disabled")
+        self._generate_started = time.monotonic()
+        self._generate_tick = None
+        self._tick_generate()
         client = self._ai_client()
         sources = [record_to_source(record) for record in self._sources]
         texts = [record.get("text", "") for record in self._sources]
@@ -836,15 +839,27 @@ class ReportTab(ttk.Frame):
             self._reverify()
             self._render_statuses()
             self._save_draft()
-            self._status.config(
-                text=f"Generate selesai: {len(self._sections)} bab."
-            )
+            self._finish_generate(f"Generate selesai: {len(self._sections)} bab.")
 
         def on_error(error) -> None:
             messagebox.showerror("Generate gagal", str(error))
-            self._status.config(text="Generate gagal.")
+            self._finish_generate("Generate gagal.")
 
         run_in_thread(self, work, on_success=on_success, on_error=on_error)
+
+    def _tick_generate(self) -> None:
+        """Perbarui status dengan detik berjalan selama generate berlangsung."""
+        detik = int(time.monotonic() - self._generate_started)
+        self._status.config(text=f"Menyusun isi laporan... ({detik} detik)")
+        self._generate_tick = self.after(1000, self._tick_generate)
+
+    def _finish_generate(self, message: str) -> None:
+        """Hentikan penghitung, aktifkan kembali tombol, laporkan hasil."""
+        if self._generate_tick is not None:
+            self.after_cancel(self._generate_tick)
+            self._generate_tick = None
+        self._generate_button.config(state="normal")
+        self._status.config(text=message)
 
     def _source_texts_by_id(self) -> dict[int, str]:
         return {index: record.get("text", "") for index, record in enumerate(self._sources)}
