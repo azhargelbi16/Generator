@@ -440,6 +440,23 @@ assert report_tab._selected_uid == belum_uid, "Klik kalimat tidak memilihnya"
 report_tab._restore_citation_action()
 assert report_tab._sentence_by_uid(belum_uid).citation is True, "Sitasi tidak dipulihkan"
 
+# Klik kalimat: baris aksi melayang muncul di dokumen dengan status + tombol
+report_tab._select_sentence(belum_uid)
+root3.update()
+assert report_tab._aksi_frame is not None and report_tab._aksi_frame.winfo_exists(), (
+    "Baris aksi tidak muncul"
+)
+tombol = [
+    w.cget("text") for w in report_tab._aksi_frame.winfo_children() if w.winfo_class() == "TButton"
+]
+assert "✒ Parafrase" in tombol and "✔ Tandai selesai" in tombol, tombol
+
+# Klik area kosong: baris aksi hilang, sorotan lepas
+report_tab._deselect()
+root3.update()
+assert report_tab._aksi_frame is None, "Baris aksi harus hilang saat lepas"
+assert report_tab._selected_uid is None, "Pilihan harus lepas saat klik kosong"
+
 # Sunting manual lewat kotak sunting, lalu tandai selesai setelah memilih ulang.
 report_tab._select_sentence(belum_uid)
 report_tab._edit_var.set("Kalimat diedit manual untuk pengujian.")

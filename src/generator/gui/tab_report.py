@@ -301,10 +301,6 @@ class ReportController:
         ttk.Button(
             actions, text="☑ Tandai semua bukan klaim selesai", command=self._mark_all_nonfactual_done
         ).pack(side="left", padx=4)
-        ttk.Button(actions, text="✒ Parafrase", command=self._paraphrase).pack(side="left", padx=4)
-        ttk.Button(actions, text="↩ Pulihkan sitasi", command=self._restore_citation_action).pack(
-            side="left", padx=4
-        )
         btn_simpan = ttk.Button(
             actions, text="💾 Simpan DOCX", command=self._save_docx, style="Accent.TButton"
         )
@@ -377,6 +373,8 @@ class ReportController:
         self._selected_para_uids: list[str] = []
         self._sentence_ranges: dict[str, tuple[str, str]] = {}
         self._paragraph_ranges: list[tuple[str, str, list[str]]] = []
+        self._aksi_frame = None
+        self._aksi_index: str | None = None
         self._render_statuses()
 
     def _render_statuses(self) -> None:
@@ -384,6 +382,8 @@ class ReportController:
         posisi = self._doc.yview()
         self._selected_uid = None
         self._selected_para_uids = []
+        self._aksi_frame = None
+        self._aksi_index = None
         self._doc.config(state="normal")
         self._doc.delete("1.0", "end")
         self._sentence_ranges = {}
@@ -472,6 +472,8 @@ class ReportController:
         uid = self._uid_at(self._doc.index(f"@{event.x},{event.y}"))
         if uid:
             self._select_sentence(uid)
+        else:
+            self._deselect()
 
     def _on_doc_double_click(self, event) -> None:
         uid = self._uid_at(self._doc.index(f"@{event.x},{event.y}"))
@@ -479,17 +481,53 @@ class ReportController:
             self._select_sentence(uid)
             self._mark_done()
 
+    def _pasang_baris_aksi(self, uid: str) -> None:
+        """Baris kecil di bawah kalimat aktif: status berwarna + aksi kalimat."""
+        if self._aksi_frame is not None:
+            self._lepas_baris_aksi()
+        status = self._uid_status(uid)
+        baris = ttk.Frame(self._doc)
+        label_status = _STATUS_LABELS[status]
+        if uid in self._done:
+            label_status += " · sudah ditandai selesai"
+        ttk.Label(baris, text="● " + label_status, foreground=_STATUS_COLORS[status]).pack(
+            side="left", padx=(0, 8)
+        )
+        ttk.Button(baris, text="✒ Parafrase", command=self._paraphrase).pack(side="left", padx=2)
+        ttk.Button(baris, text="✔ Tandai selesai", command=self._mark_done).pack(side="left", padx=2)
+        ttk.Button(baris, text="↩ Pulihkan sitasi", command=self._restore_citation_action).pack(
+            side="left", padx=2
+        )
+        self._aksi_frame = baris
+        self._aksi_index = self._doc.index(f"{self._sentence_ranges[uid][1]} lineend")
+        self._doc.window_create(self._aksi_index, window=baris)
+
+    def _lepas_baris_aksi(self) -> None:
+        if self._aksi_frame is not None:
+            try:
+                self._doc.delete(self._aksi_index)
+            except tk.TclError:
+                pass
+            self._aksi_frame = None
+            self._aksi_index = None
+        self._doc.tag_remove("terpilih", "1.0", "end")
+
+    def _deselect(self) -> None:
+        self._lepas_baris_aksi()
+        self._selected_uid = None
+        self._selected_para_uids = []
+        self._doc.config(state="disabled")
+
     def _select_sentence(self, uid: str) -> None:
-        if self._selected_para_uids:
-            lama = self._paragraph_range_of(self._selected_para_uids)
-            if lama:
-                self._doc.tag_remove("terpilih", lama[0], lama[1])
+        self._lepas_baris_aksi()
         self._selected_uid = uid
+        self._doc.config(state="normal")
         for awal, akhir, uids in self._paragraph_ranges:
             if uid in uids:
                 self._selected_para_uids = uids
-                self._doc.tag_add("terpilih", awal, akhir)
                 break
+        self._doc.tag_add("terpilih", *self._sentence_ranges[uid])
+        self._pasang_baris_aksi(uid)
         status = self._uid_status(uid)
         selesai = "sudah ditandai selesai" if uid in self._done else "belum ditandai selesai"
         sudah = sum(1 for u in self._selected_para_uids if u in self._done)
