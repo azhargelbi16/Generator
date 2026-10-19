@@ -457,13 +457,16 @@ root3.update()
 assert report_tab._aksi_frame is None, "Baris aksi harus hilang saat lepas"
 assert report_tab._selected_uid is None, "Pilihan harus lepas saat klik kosong"
 
-# Sunting manual lewat kotak sunting, lalu tandai selesai setelah memilih ulang.
+# Sunting langsung di dokumen: ketik di rentang kalimat, tersimpan saat lepas.
 report_tab._select_sentence(belum_uid)
-report_tab._edit_var.set("Kalimat diedit manual untuk pengujian.")
-report_tab._apply_edit()
+awal, akhir = report_tab._sentence_ranges[belum_uid]
+report_tab._doc.delete(awal, akhir)
+report_tab._doc.insert(awal, "Kalimat diedit langsung di dokumen.")
+report_tab._commit_inline_edit()
 edited = report_tab._sentence_by_uid(belum_uid)
-assert edited.origin == "manual", "Edit harus menandai kalimat manual"
-assert edited.uid == belum_uid, "Edit harus mempertahankan uid"
+assert edited.origin == "manual", "Suntingan langsung harus menandai kalimat manual"
+assert edited.uid == belum_uid, "Suntingan harus mempertahankan uid"
+assert edited.text == "Kalimat diedit langsung di dokumen.", edited.text
 report_tab._select_sentence(belum_uid)
 report_tab._mark_done()
 
@@ -502,6 +505,18 @@ assert report_tab._uid_status(para_uid) == "terverifikasi", (
     "Parafrase dengan kutipan sah harus terverifikasi"
 )
 assert report_module.can_export(report_tab._statuses, frozenset(report_tab._done)) == (True, "")
+
+# Ketikan di luar kalimat aktif ditolak; di dalam diterima.
+report_tab._select_sentence(para_uid)
+awal, akhir = report_tab._sentence_ranges[para_uid]
+kelas = ttk_tk.Event()
+kelas.keysym = "a"
+kelas.state = 0
+report_tab._doc.mark_set("insert", f"{awal} linestart")
+assert report_tab._on_doc_key(kelas) == "break", "Ketikan di luar kalimat aktif harus diblok"
+report_tab._doc.mark_set("insert", awal)
+assert report_tab._on_doc_key(kelas) is None, "Ketikan di dalam kalimat aktif harus boleh"
+report_tab._deselect()
 
 draft_raw = json.loads(draft_file.read_text(encoding="utf-8"))
 assert len(draft_raw["sections"]) == 1, draft_raw["sections"]

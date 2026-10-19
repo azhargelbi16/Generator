@@ -50,6 +50,12 @@ _STATUS_COLORS = {
     STATUS_NON_FACTUAL: "#667085",
 }
 
+# Tombol navigasi yang boleh jalan walau kursor di luar kalimat aktif.
+_NAV_KEYS = {
+    "Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next",
+    "Escape", "Tab", "Shift_L", "Shift_R", "Control_L", "Control_R",
+}
+
 
 def normalize_metadata(doc: dict[str, str]) -> dict[str, str]:
     """Samakan kunci metadata dokumen dengan yang dibaca `merge_metadata`.
@@ -307,21 +313,10 @@ class ReportController:
         btn_simpan.pack(side="left", padx=4)
         ToolTip(btn_simpan, "Ekspor laporan ke DOCX; tersedia setelah semua kalimat ditandai.")
 
-        edit_row = ttk.Frame(result)
-        edit_row.pack(side="bottom", fill="x", pady=(2, 4))
-        self._edit_var = tk.StringVar()
-        self._edit_entry = ttk.Entry(edit_row, textvariable=self._edit_var, state="disabled")
-        self._edit_entry.pack(side="left", fill="x", expand=True, padx=4)
-        self._edit_entry.bind("<Return>", lambda _event: self._apply_edit())
-        self._apply_edit_button = ttk.Button(
-            edit_row, text="Terapkan suntingan", command=self._apply_edit, state="disabled"
-        )
-        self._apply_edit_button.pack(side="left", padx=4)
-
         self._info = ttk.Label(
             result,
-            text="Klik kalimat untuk memilih paragrafnya; klik ganda kalimat untuk langsung "
-            "tandai selesai.",
+            text="Klik kalimat untuk memilihnya; ketik langsung pada kalimat yang diklik untuk "
+            "memperbaikinya, lalu klik di luar kalimat untuk menyimpan.",
             foreground="#666666",
             wraplength=560,
             justify="left",
@@ -340,7 +335,7 @@ class ReportController:
             kolom,
             wrap="word",
             width=92,
-            state="disabled",
+            state="normal",
             font=("Times New Roman", 12),
             spacing1=2,
             padx=32,
@@ -367,7 +362,7 @@ class ReportController:
         )
         self._doc.tag_config("terpilih", background="#fff3bf")
         self._doc.bind("<Button-1>", self._on_doc_click)
-        self._doc.bind("<Double-Button-1>", self._on_doc_double_click)
+        self._doc.bind("<KeyPress>", self._on_doc_key)
 
         self._selected_uid: str | None = None
         self._selected_para_uids: list[str] = []
@@ -384,7 +379,7 @@ class ReportController:
         self._selected_para_uids = []
         self._aksi_frame = None
         self._aksi_index = None
-        self._doc.config(state="normal")
+        self._active_edit: tuple[str, str, str, str] | None = None
         self._doc.delete("1.0", "end")
         self._sentence_ranges = {}
         self._paragraph_ranges = []
@@ -424,7 +419,6 @@ class ReportController:
                 ("judul_bab",),
             )
         self._perbarui_chip()
-        self._doc.config(state="disabled")
         self._doc.yview_moveto(posisi[0])
 
     def _perbarui_chip(self) -> None:
@@ -475,11 +469,31 @@ class ReportController:
         else:
             self._deselect()
 
-    def _on_doc_double_click(self, event) -> None:
-        uid = self._uid_at(self._doc.index(f"@{event.x},{event.y}"))
-        if uid:
-            self._select_sentence(uid)
-            self._mark_done()
+    def _on_doc_key(self, event) -> str | None:
+        """Blok ketikan di luar kalimat aktif; dokumen hanya berubah lewat kalimat terpilih."""
+        keysym = getattr(event, "keysym", "")
+        if getattr(event, "state", 0) & 0x4 and keysym.lower() in ("c", "a"):
+            return None  # salin / pilih semua tetap boleh saat membaca
+        if self._active_edit is None:
+            return "break"
+        _uid, awal, akhir, _teks_asli = self._active_edit
+        try:
+            if self._doc.tag_ranges("sel"):
+                if self._doc.compare("sel.first", "<", awal) or self._doc.compare(
+                    "sel.last", ">", akhir
+                ):
+                    return "break"
+        except tk.TclError:
+            pass
+        if keysym in _NAV_KEYS:
+            return None
+        try:
+            insert = self._doc.index("insert")
+        except tk.TclError:
+            return "break"
+        if self._doc.compare(insert, "<", awal) or self._doc.compare(insert, ">", akhir):
+            return "break"
+        return None
 
     def _pasang_baris_aksi(self, uid: str) -> None:
         """Baris kecil di bawah kalimat aktif: status berwarna + aksi kalimat."""
@@ -513,20 +527,23 @@ class ReportController:
         self._doc.tag_remove("terpilih", "1.0", "end")
 
     def _deselect(self) -> None:
+        self._commit_inline_edit()
         self._lepas_baris_aksi()
         self._selected_uid = None
         self._selected_para_uids = []
-        self._doc.config(state="disabled")
 
     def _select_sentence(self, uid: str) -> None:
+        if self._active_edit is not None and self._active_edit[0] != uid:
+            self._commit_inline_edit()
         self._lepas_baris_aksi()
         self._selected_uid = uid
-        self._doc.config(state="normal")
         for awal, akhir, uids in self._paragraph_ranges:
             if uid in uids:
                 self._selected_para_uids = uids
                 break
         self._doc.tag_add("terpilih", *self._sentence_ranges[uid])
+        rentang = self._sentence_ranges[uid]
+        self._active_edit = (uid, rentang[0], rentang[1], self._doc.get(*rentang))
         self._pasang_baris_aksi(uid)
         status = self._uid_status(uid)
         selesai = "sudah ditandai selesai" if uid in self._done else "belum ditandai selesai"
@@ -535,10 +552,25 @@ class ReportController:
             text=f"[{self._section_title_of(uid)}] paragraf ini {sudah}/{len(self._selected_para_uids)} "
             f"kalimat selesai; kalimat yang diklik {status} ({selesai})."
         )
+
+    def _commit_inline_edit(self) -> None:
+        """Simpan ketikan di rentang kalimat aktif sebagai suntingan manual; kosong diabaikan."""
+        if self._active_edit is None:
+            return
+        uid, awal, akhir, teks_asli = self._active_edit
+        self._active_edit = None
         sentence = self._sentence_by_uid(uid)
-        self._edit_var.set(sentence.text if sentence else "")
-        self._edit_entry.config(state="normal")
-        self._apply_edit_button.config(state="normal")
+        if sentence is None:
+            return
+        teks_baru = " ".join(self._doc.get(awal, akhir).split())
+        if teks_baru and teks_baru != teks_asli:
+            self._swap_sentence(uid, [report.apply_manual_edit(sentence, teks_baru)])
+            self._after_structure_change(
+                "Kalimat disunting langsung di dokumen; berstatus belum terverifikasi "
+                "sampai ditandai selesai."
+            )
+        else:
+            self._render_statuses()
 
     def _paragraph_range_of(self, uids: list[str]):
         for awal, akhir, daftar in self._paragraph_ranges:
@@ -557,20 +589,6 @@ class ReportController:
         self._save_draft()
         self._info.config(
             text=f"Paragraf ditandai selesai ({len(self._selected_para_uids)} kalimat)."
-        )
-
-    def _apply_edit(self) -> None:
-        if self._selected_uid is None:
-            self._info.config(text="Klik dulu kalimat yang ingin disunting.")
-            return
-        sentence = self._sentence_by_uid(self._selected_uid)
-        new_text = self._edit_var.get().strip()
-        if not sentence or not new_text or new_text == sentence.text:
-            return
-        new_sentence = report.apply_manual_edit(sentence, new_text)
-        self._swap_sentence(sentence.uid, [new_sentence])
-        self._after_structure_change(
-            "Kalimat disunting manual; berstatus belum terverifikasi sampai ditandai selesai."
         )
 
     def _iter_sentences(self):
