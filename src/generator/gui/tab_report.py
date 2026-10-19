@@ -223,7 +223,7 @@ class ReportTab(ttk.Frame):
         ttk.Label(frame, text="Outline bab (satu baris satu bab)").grid(
             row=6, column=0, sticky="w", padx=6, pady=4
         )
-        self._outline_text = tk.Text(frame, width=44, height=9, wrap="word")
+        self._outline_text = tk.Text(frame, width=44, height=6, wrap="word")
         self._outline_text.grid(row=7, column=0, columnspan=2, sticky="nsew", padx=6, pady=4)
         self._outline_text.bind("<KeyRelease>", lambda _event: self._on_outline_edited())
 
@@ -242,19 +242,8 @@ class ReportTab(ttk.Frame):
         result = ttk.LabelFrame(parent, text="Hasil generate (satu kotak per kalimat)")
         result.pack(side="top", fill="both", expand=True, pady=(8, 0))
 
-        container = ttk.Frame(result)
-        container.pack(side="top", fill="both", expand=True, padx=4, pady=4)
-        self._canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self._canvas.yview)
-        self._rows_frame = ttk.Frame(self._canvas, padding=2)
-        self._rows_window = self._canvas.create_window((0, 0), window=self._rows_frame, anchor="nw")
-        self._canvas.configure(yscrollcommand=scrollbar.set)
-        self._canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        self._rows_frame.bind("<Configure>", lambda _event: self._on_rows_configure())
-        self._canvas.bind("<Configure>", self._on_canvas_configure)
-        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
+        # Baris tombol dipasang lebih dulu agar tidak pernah terdorong keluar
+        # layar saat ruang vertikal sempit (ditemukan saat uji manual user).
         actions = ttk.Frame(result)
         actions.pack(side="bottom", fill="x")
         ttk.Button(actions, text="Tandai selesai", command=self._mark_done).pack(side="left", padx=4)
@@ -276,6 +265,19 @@ class ReportTab(ttk.Frame):
             justify="left",
         )
         self._result_hint.pack(side="bottom", fill="x")
+
+        container = ttk.Frame(result)
+        container.pack(side="top", fill="both", expand=True, padx=4, pady=4)
+        self._canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self._canvas.yview)
+        self._rows_frame = ttk.Frame(self._canvas, padding=2)
+        self._rows_window = self._canvas.create_window((0, 0), window=self._rows_frame, anchor="nw")
+        self._canvas.configure(yscrollcommand=scrollbar.set)
+        self._canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        self._rows_frame.bind("<Configure>", lambda _event: self._on_rows_configure())
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         self._rows = []
         self._selected_row = None

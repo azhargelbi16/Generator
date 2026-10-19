@@ -60,7 +60,7 @@ def build_app() -> tk.Tk | None:
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
     width = min(980, int(screen_w * 0.9))
-    height = min(640, int(screen_h * 0.82))
+    height = min(720, int(screen_h * 0.92))
     x = max(0, (screen_w - width) // 2)
     y = max(0, (screen_h - height) // 3)
     root.geometry(f"{width}x{height}+{x}+{y}")
