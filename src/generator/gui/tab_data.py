@@ -91,10 +91,10 @@ class _CrudPanel(ttk.Frame):
     def _create(self, item) -> int:
         raise NotImplementedError
 
-    def _update(self, item) -> None:
+    def _apply_update(self, item) -> None:
         raise NotImplementedError
 
-    def _delete(self, item_id: int) -> None:
+    def _remove(self, item_id: int) -> None:
         raise NotImplementedError
 
     def _browse(self) -> None:
@@ -145,7 +145,7 @@ class _CrudPanel(ttk.Frame):
             return
         for key, _ in self._fields:
             setattr(item, key, self._vars[key].get().strip())
-        self._update(item)
+        self._apply_update(item)
         self._status.config(text="Diubah.")
         self.refresh()
 
@@ -154,7 +154,7 @@ class _CrudPanel(ttk.Frame):
         if item is None:
             self._status.config(text="Pilih baris dulu.")
             return
-        self._delete(item.id)
+        self._remove(item.id)
         self._status.config(text="Dihapus.")
         self.refresh()
 
@@ -182,10 +182,10 @@ class _DosenPanel(_CrudPanel):
     def _create(self, item) -> int:
         return self._db.add_dosen(item)
 
-    def _update(self, item) -> None:
+    def _apply_update(self, item) -> None:
         self._db.update_dosen(item)
 
-    def _delete(self, item_id: int) -> None:
+    def _remove(self, item_id: int) -> None:
         self._db.delete_dosen(item_id)
 
 
@@ -207,10 +207,10 @@ class _MataKuliahPanel(_CrudPanel):
     def _create(self, item) -> int:
         return self._db.add_mata_kuliah(item)
 
-    def _update(self, item) -> None:
+    def _apply_update(self, item) -> None:
         self._db.update_mata_kuliah(item)
 
-    def _delete(self, item_id: int) -> None:
+    def _remove(self, item_id: int) -> None:
         self._db.delete_mata_kuliah(item_id)
 
 
@@ -232,10 +232,10 @@ class _LogoPanel(_CrudPanel):
     def _create(self, item) -> int:
         return self._db.add_logo(item)
 
-    def _update(self, item) -> None:
+    def _apply_update(self, item) -> None:
         self._db.update_logo(item)
 
-    def _delete(self, item_id: int) -> None:
+    def _remove(self, item_id: int) -> None:
         self._db.delete_logo(item_id)
 
 
