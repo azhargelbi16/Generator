@@ -15,6 +15,6 @@ def test_template_tab_exists():
     assert hasattr(t, "TemplateTab")
 
 
-def test_report_tab_exists():
+def test_report_controller_exists():
     import generator.gui.tab_report as t
-    assert hasattr(t, "ReportTab")
+    assert hasattr(t, "ReportController")

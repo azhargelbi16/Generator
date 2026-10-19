@@ -1,4 +1,4 @@
-"""Tab Buat Laporan bagian 1: sumber, fallback OCR/manual, koreksi metadata (12, Task 16).
+﻿"""Tab Buat Laporan bagian 1: sumber, fallback OCR/manual, koreksi metadata (12, Task 16).
 
 Semua operasi lama (baca PDF/OCR, ambil web, panggilan AI) berjalan lewat
 `worker.run_in_thread` supaya jendela tidak membeku. Kode tidak pernah menebak
@@ -103,11 +103,17 @@ def record_to_source(record: dict) -> Source:
     )
 
 
-class ReportTab(ttk.Frame):
-    """Pengaturan laporan, masukan sumber, dan koreksi metadata."""
+class ReportController:
+    """Pengendali laporan: halaman "Laporan" (sumber+pengaturan) dan "Review Hasil".
 
-    def __init__(self, parent, db: database.Database):
-        super().__init__(parent, padding=12)
+    Bukan widget; semua state milik objek ini, widget dibangun ke dua halaman
+    notebook yang diberikan. `self._widget` dipakai untuk `after` pekerja latar.
+    """
+
+    def __init__(self, setup_page, review_page, notebook, db: database.Database):
+        self._widget = setup_page
+        self._notebook = notebook
+        self._review_page = review_page
         self._db = db
         self._sources: list[dict] = []
         self._sections = []
@@ -119,11 +125,11 @@ class ReportTab(ttk.Frame):
         self._logo_list = db.list_logo()
         self._template = None
         self._unknown_markers: list[str] = []
+        self._generate_tick = None
 
-        # Baris atas berisi dua kolom (sumber | pengaturan); hasil generate
-        # memakai lebar penuh di bawahnya supaya nyaman dibaca seperti dokumen.
-        atas = ttk.Frame(self)
-        atas.pack(side="top", fill="x")
+        # Halaman Laporan: dua kolom (sumber | pengaturan).
+        atas = ttk.Frame(setup_page, padding=(8, 8, 8, 4))
+        atas.pack(side="top", fill="both", expand=True)
         left = ttk.Frame(atas)
         left.pack(side="left", fill="both", expand=True, padx=(0, 8))
         right = ttk.Frame(atas)
@@ -131,7 +137,7 @@ class ReportTab(ttk.Frame):
 
         self._build_source_area(left)
         self._build_setup_area(right)
-        self._build_result_area(self)
+        self._build_result_area(review_page)
 
         self._restore_draft()
 
@@ -140,7 +146,7 @@ class ReportTab(ttk.Frame):
     def _build_source_area(self, parent) -> None:
         list_frame = ttk.LabelFrame(parent, text="Sumber")
         list_frame.pack(side="top", fill="both", expand=True)
-        self._source_listbox = tk.Listbox(list_frame, height=8, exportselection=False)
+        self._source_listbox = tk.Listbox(list_frame, height=14, exportselection=False)
         self._source_listbox.pack(side="left", fill="both", expand=True, padx=4, pady=4)
         self._source_listbox.bind("<<ListboxSelect>>", lambda _event: self._on_source_select())
         scrollbar = ttk.Scrollbar(list_frame, command=self._source_listbox.yview)
@@ -187,7 +193,7 @@ class ReportTab(ttk.Frame):
 
     def _build_setup_area(self, parent) -> None:
         frame = ttk.LabelFrame(parent, text="Pengaturan laporan")
-        frame.pack(side="top", fill="x")
+        frame.pack(side="top", fill="both", expand=True)
 
         profil = self._db.get_profil()
         profil_text = (
@@ -229,7 +235,7 @@ class ReportTab(ttk.Frame):
         ttk.Label(frame, text="Outline bab (satu baris satu bab)").grid(
             row=6, column=0, sticky="w", padx=6, pady=4
         )
-        self._outline_text = tk.Text(frame, width=44, height=6, wrap="word")
+        self._outline_text = tk.Text(frame, width=44, height=12, wrap="word")
         self._outline_text.grid(row=7, column=0, columnspan=2, sticky="nsew", padx=6, pady=4)
         self._outline_text.bind("<KeyRelease>", lambda _event: self._on_outline_edited())
 
@@ -249,8 +255,8 @@ class ReportTab(ttk.Frame):
 
         legend = ttk.Label(
             result,
-            text="Hijau = terverifikasi · Merah = belum terverifikasi · Abu-abu = bukan klaim "
-            "· Latar hijau = sudah ditandai selesai",
+            text="Hijau = terverifikasi Â· Merah = belum terverifikasi Â· Abu-abu = bukan klaim "
+            "Â· Latar hijau = sudah ditandai selesai",
             foreground="#666666",
         )
         legend.pack(side="top", anchor="w", padx=6)
@@ -551,7 +557,7 @@ class ReportTab(ttk.Frame):
             messagebox.showerror("Parafrase gagal", str(error))
             self._status.config(text="Parafrase gagal.")
 
-        run_in_thread(self, work, on_success=on_success, on_error=on_error)
+        run_in_thread(self._widget, work, on_success=on_success, on_error=on_error)
 
     # -------------------------------------------------------------- sumber
 
@@ -700,7 +706,7 @@ class ReportTab(ttk.Frame):
             source = bibliography.extract_source(text, client)
             return source_to_record(bibliography.merge_metadata(source, meta), text, "pdf")
 
-        run_in_thread(self, work, on_success=self._append_source, on_error=self._source_failed)
+        run_in_thread(self._widget, work, on_success=self._append_source, on_error=self._source_failed)
 
     def _add_link(self) -> None:
         url = simpledialog.askstring("Tambah Sumber Link", "URL sumber:", parent=self)
@@ -718,7 +724,7 @@ class ReportTab(ttk.Frame):
             source = bibliography.extract_source(text, client)
             return source_to_record(bibliography.merge_metadata(source, meta), text, "web")
 
-        run_in_thread(self, work, on_success=self._append_source, on_error=self._source_failed)
+        run_in_thread(self._widget, work, on_success=self._append_source, on_error=self._source_failed)
 
     def _paste_manual(self) -> None:
         dialog = tk.Toplevel(self)
@@ -748,7 +754,7 @@ class ReportTab(ttk.Frame):
             source = bibliography.extract_source(text, client)
             return source_to_record(bibliography.merge_metadata(source, {}), text, "manual")
 
-        run_in_thread(self, work, on_success=self._append_source, on_error=self._source_failed)
+        run_in_thread(self._widget, work, on_success=self._append_source, on_error=self._source_failed)
 
     # ----------------------------------------------------------- pengaturan
 
@@ -835,7 +841,7 @@ class ReportTab(ttk.Frame):
             messagebox.showerror("Gagal menyusun outline", str(error))
             self._status.config(text="Penambahan outline gagal.")
 
-        run_in_thread(self, work, on_success=on_success, on_error=on_error)
+        run_in_thread(self._widget, work, on_success=on_success, on_error=on_error)
 
     # ---------------------------------------------------------------- draf
 
@@ -921,7 +927,7 @@ class ReportTab(ttk.Frame):
             messagebox.showerror("Gagal menyimpan DOCX", str(error))
             self._status.config(text="Penyimpanan DOCX gagal.")
 
-        run_in_thread(self, work, on_success=on_success, on_error=on_error)
+        run_in_thread(self._widget, work, on_success=on_success, on_error=on_error)
 
     def _generate(self) -> None:
         outline = self._outline_content()
@@ -964,23 +970,24 @@ class ReportTab(ttk.Frame):
             self._render_statuses()
             self._save_draft()
             self._finish_generate(f"Generate selesai: {len(self._sections)} bab.")
+            self._notebook.select(self._review_page)
 
         def on_error(error) -> None:
             messagebox.showerror("Generate gagal", str(error))
             self._finish_generate("Generate gagal.")
 
-        run_in_thread(self, work, on_success=on_success, on_error=on_error)
+        run_in_thread(self._widget, work, on_success=on_success, on_error=on_error)
 
     def _tick_generate(self) -> None:
         """Perbarui status dengan detik berjalan selama generate berlangsung."""
         detik = int(time.monotonic() - self._generate_started)
         self._status.config(text=f"Menyusun isi laporan... ({detik} detik)")
-        self._generate_tick = self.after(1000, self._tick_generate)
+        self._generate_tick = self._widget.after(1000, self._tick_generate)
 
     def _finish_generate(self, message: str) -> None:
         """Hentikan penghitung, aktifkan kembali tombol, laporkan hasil."""
         if self._generate_tick is not None:
-            self.after_cancel(self._generate_tick)
+            self._widget.after_cancel(self._generate_tick)
             self._generate_tick = None
         self._generate_button.config(state="normal")
         self._status.config(text=message)

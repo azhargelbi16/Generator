@@ -73,7 +73,13 @@ def build_app() -> tk.Tk | None:
 
     notebook.add(tab_data.DataTab(notebook, db), text="Data")
     notebook.add(tab_template.TemplateTab(notebook, db), text="Template")
-    notebook.add(tab_report.ReportTab(notebook, db), text="Laporan")
+    laporan_setup = ttk.Frame(notebook)
+    laporan_review = ttk.Frame(notebook)
+    notebook.add(laporan_setup, text="Laporan")
+    notebook.add(laporan_review, text="Review Hasil")
+    pengendali = tab_report.ReportController(laporan_setup, laporan_review, notebook, db)
+    laporan_setup.controller = pengendali
+    laporan_review.controller = pengendali
     notebook.add(tab_settings.SettingsTab(notebook, paths.CONFIG_PATH), text="Pengaturan")
 
     hint = "API key belum diisi; buka tab Pengaturan untuk mengisi endpoint dan API key."
