@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..textutil import repair_mojibake
 from . import prompts
 from .citation import Author, Source
 
@@ -56,8 +57,8 @@ def _source_from_dict(data: dict) -> Source:
                 continue
             authors.append(
                 Author(
-                    family=_text_field(entry, "family"),
-                    given=_text_field(entry, "given"),
+                    family=repair_mojibake(_text_field(entry, "family")),
+                    given=repair_mojibake(_text_field(entry, "given")),
                     is_org=bool(entry.get("is_org", False)),
                     abbrev=_text_field(entry, "abbrev"),
                 )
@@ -65,8 +66,8 @@ def _source_from_dict(data: dict) -> Source:
     return Source(
         authors=authors,
         year=_text_field(data, "year"),
-        title=_text_field(data, "title"),
-        container=_text_field(data, "container"),
+        title=repair_mojibake(_text_field(data, "title")),
+        container=repair_mojibake(_text_field(data, "container")),
         doi=_text_field(data, "doi"),
         url=_text_field(data, "url"),
     )

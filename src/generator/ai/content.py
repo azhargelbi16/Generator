@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from ..sources.chunking import chunk_text
+from ..textutil import repair_mojibake
 from . import prompts
 
 _logger = logging.getLogger(__name__)
@@ -81,12 +82,12 @@ def _coerce_source_ids(raw) -> list[int]:
 
 
 def _sentence_from_dict(raw: dict) -> Sentence | None:
-    text = str(raw.get("text", "") or "")
+    text = repair_mojibake(str(raw.get("text", "") or ""))
     if not text:
         return None
     return Sentence(
         text=text,
-        quote=str(raw.get("quote", "") or ""),
+        quote=repair_mojibake(str(raw.get("quote", "") or "")),
         source_ids=_coerce_source_ids(raw.get("source_ids")),
         is_factual=bool(raw.get("is_factual", True)),
     )
@@ -290,13 +291,13 @@ def paraphrase(paragraph: Paragraph, sources: list, source_texts: list[str], cli
     for raw_sentence in raw_sentences:
         if not isinstance(raw_sentence, dict):
             continue
-        text = str(raw_sentence.get("text", "") or "")
+        text = repair_mojibake(str(raw_sentence.get("text", "") or ""))
         if not text:
             continue
         sentences.append(
             Sentence(
                 text=text,
-                quote=str(raw_sentence.get("quote", "") or ""),
+                quote=repair_mojibake(str(raw_sentence.get("quote", "") or "")),
                 source_ids=_coerce_source_ids(raw_sentence.get("source_ids")),
                 is_factual=bool(raw_sentence.get("is_factual", True)),
             )
