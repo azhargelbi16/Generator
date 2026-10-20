@@ -1,10 +1,51 @@
 import pytest
 from generator.config import Config
-from generator.ai.client import AIClient, AIError, check_connection
+from generator.ai.client import AIClient, AIError, StreamError, check_connection
 
 
 def _cfg():
     return Config("http://x/v1", "k", "m", 0.2)
+
+
+def _fake_stream(monkeypatch, lines, status=200):
+    class Resp:
+        status_code = status
+
+        def iter_lines(self):
+            return iter(lines)
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("generator.ai.client.requests.post", lambda *a, **k: Resp())
+
+
+def _chunk(text: str) -> str:
+    return 'data: {"choices":[{"delta":{"content":"%s"}}]}' % text
+
+
+def test_chat_stream_menyusun_delta(monkeypatch):
+    _fake_stream(monkeypatch, [_chunk("A"), _chunk("B"), "data: [DONE]"])
+    client = AIClient(_cfg())
+    assert list(client.chat_stream([{"role": "user", "content": "ping"}])) == ["A", "B"]
+
+
+def test_chat_stream_http400_jadi_stream_error(monkeypatch):
+    _fake_stream(monkeypatch, [], status=400)
+    client = AIClient(_cfg())
+    with pytest.raises(StreamError):
+        list(client.chat_stream([{"role": "user", "content": "ping"}]))
+
+
+def test_chat_stream_cancel_berhenti(monkeypatch):
+    import threading
+
+    _fake_stream(monkeypatch, [_chunk("A"), _chunk("B"), "data: [DONE]"])
+    cancel = threading.Event()
+    stream = AIClient(_cfg()).chat_stream([{"role": "user", "content": "ping"}], cancel=cancel)
+    assert next(stream) == "A"
+    cancel.set()
+    assert list(stream) == []
 
 
 def test_chat_returns_content(monkeypatch):
