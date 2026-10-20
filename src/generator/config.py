@@ -16,6 +16,7 @@ class Config:
     ai_api_key: str = ""
     ai_model: str = DEFAULT_MODEL
     ai_temperature: float = 0.2
+    citation_style: str = "et_al"
 
 
 def default_config() -> Config:
@@ -43,6 +44,7 @@ def load_config(path: Path) -> Config:
         ai_api_key=str(raw.get("ai_api_key", base.ai_api_key)),
         ai_model=str(raw.get("ai_model", base.ai_model)),
         ai_temperature=_coerce_float(raw.get("ai_temperature"), base.ai_temperature),
+        citation_style=str(raw.get("citation_style", base.citation_style)),
     )
 
 

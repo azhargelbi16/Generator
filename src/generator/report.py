@@ -102,9 +102,12 @@ def cited_ids(statuses: list[SentenceStatus]) -> set[int]:
     return referenced
 
 
-def labels_for(sources: list[Source], cited: set[int]) -> dict[int, str]:
+def labels_for(sources: list[Source], cited: set[int], style: str = "et_al") -> dict[int, str]:
     """Peta indeks sumber asli ke sitasi dalam kurung; urutan kunci ikut urutan referensi."""
-    return {labeled.source_index: labeled.in_text for labeled in order_and_label(sources, cite=cited)}
+    return {
+        labeled.source_index: labeled.in_text
+        for labeled in order_and_label(sources, cite=cited, style=style)
+    }
 
 
 def references_for(sources: list[Source], cited: set[int]) -> list[str]:

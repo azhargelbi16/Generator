@@ -94,7 +94,17 @@ def _join_names(names: list[str]) -> str:
     return ", ".join(names[:-1]) + ", & " + names[-1]
 
 
-def _author_part(source: Source, first_use: bool, family_with: Sequence[Source]) -> str:
+def _et_al_marker(style: str) -> str:
+    """Penanda penulis ketiga dan seterusnya; hanya ini yang berubah antar gaya."""
+    return "dkk." if style == "dkk" else "et al."
+
+
+def _author_part(
+    source: Source,
+    first_use: bool,
+    family_with: Sequence[Source],
+    style: str = "et_al",
+) -> str:
     authors = source.authors
     if not authors:
         return source.title
@@ -111,10 +121,10 @@ def _author_part(source: Source, first_use: bool, family_with: Sequence[Source])
         depth = _expansion_depth(source, family_with)
         if depth >= len(families):
             return _join_names(families)
-        return ", ".join(families[:depth]) + ", et al."
+        return ", ".join(families[:depth]) + f", {_et_al_marker(style)}"
     if len(families) == 2:
         return f"{families[0]} & {families[1]}"
-    return f"{families[0]} et al."
+    return f"{families[0]} {_et_al_marker(style)}"
 
 
 def in_text(
@@ -123,9 +133,10 @@ def in_text(
     first_use: bool = True,
     family_with: Sequence[Source] = (),
     suffix: str = "",
+    style: str = "et_al",
 ) -> str:
     year = source.year or "n.d."
-    return f"({_author_part(source, first_use, family_with)}, {year}{suffix})"
+    return f"({_author_part(source, first_use, family_with, style)}, {year}{suffix})"
 
 
 def _format_author(author: Author) -> str:
@@ -174,11 +185,15 @@ def reference(source: Source, *, suffix: str = "") -> str:
     return " ".join(segments)
 
 
-def order_and_label(sources: Sequence[Source], cite: set[int] | None = None) -> list[LabeledSource]:
+def order_and_label(
+    sources: Sequence[Source], cite: set[int] | None = None, style: str = "et_al"
+) -> list[LabeledSource]:
     """Urutkan, tetapkan sufiks a/b/c, lalu hitung sitasi dan daftar pustaka tiap sumber.
 
     `source_index` selalu indeks asli di `sources`. Bila `cite` diberikan, sumber di luar
     `cite` dibuang lebih dulu supaya tidak ikut menentukan sufiks (17.4).
+    `style` hanya mengubah penanda "et al." menjadi "dkk." pada sitasi; daftar
+    pustaka tidak berubah.
     """
     indexed = [(i, source) for i, source in enumerate(sources) if cite is None or i in cite]
     indexed.sort(key=lambda pair: _sort_key(pair[1]))
@@ -203,7 +218,7 @@ def order_and_label(sources: Sequence[Source], cite: set[int] | None = None) -> 
                 source=source,
                 source_index=i,
                 suffix=suffix,
-                in_text=in_text(source, first_use=True, family_with=remaining, suffix=suffix),
+                in_text=in_text(source, first_use=True, family_with=remaining, suffix=suffix, style=style),
                 reference=reference(source, suffix=suffix),
             )
         )

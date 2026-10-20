@@ -36,3 +36,25 @@ def test_load_nested_temperature_falls_back(tmp_path):
         "ai_temperature": {"nested": 1},
     }), encoding="utf-8")
     assert config.load_config(p).ai_temperature == 0.2
+
+
+# --- Task 1.5: preferensi gaya sitasi ---------------------------------------
+
+
+def test_config_lama_tanpa_citation_style_default_et_al(tmp_path):
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({
+        "ai_base_url": "http://localhost:20128/v1",
+        "ai_api_key": "k",
+        "ai_model": "m",
+        "ai_temperature": 0.2,
+    }), encoding="utf-8")
+    assert config.load_config(p).citation_style == "et_al"
+
+
+def test_roundtrip_citation_style_dkk(tmp_path):
+    p = tmp_path / "config.json"
+    cfg = config.Config("http://localhost:1234/v1", "k", "m", 0.2, citation_style="dkk")
+    config.save_config(cfg, p)
+    assert config.load_config(p).citation_style == "dkk"
+

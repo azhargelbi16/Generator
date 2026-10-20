@@ -87,3 +87,42 @@ def test_first_author_same_second_differs_disambiguates():
     b = S([A("Cooper", "A"), A("Ross", "Y"), A("X", "C")], year="2015")
     assert in_text(a, family_with=[a, b]) == "(Cooper, Lee, et al., 2015)"
     assert in_text(b, family_with=[a, b]) == "(Cooper, Ross, et al., 2015)"
+
+
+# --- Task 1.5: gaya sitasi et al./dkk. --------------------------------------
+
+
+def test_gaya_dkk_untuk_satu_dua_dan_tiga_penulis():
+    one = S([A("Saleh", "Budi")], year="2023")
+    two = S([A("Saleh", "Budi"), A("Wijaya", "Ani")], year="2023")
+    three = S([A("Saleh", "Budi"), A("Wijaya", "Ani"), A("Lestari", "Cici")], year="2023")
+    assert in_text(one, style="dkk") == "(Saleh, 2023)"
+    assert in_text(two, style="dkk") == "(Saleh & Wijaya, 2023)"
+    assert in_text(three, style="dkk") == "(Saleh dkk., 2023)"
+    assert in_text(three) == "(Saleh et al., 2023)"
+
+
+def test_gaya_dkk_organisasi_dan_sufiks_tetap():
+    org = S([A("Kementerian Pertanian", is_org=True, abbrev="Kementan")])
+    assert in_text(org, style="dkk") == "(Kementerian Pertanian [Kementan], 2020)"
+    labels = order_and_label(
+        [S([A("Saleh", "Budi")], title="B"), S([A("Saleh", "Budi")], title="A")],
+        style="dkk",
+    )
+    assert {label.suffix for label in labels} == {"a", "b"}
+    assert all("Saleh, 2020" in label.in_text for label in labels)
+
+
+def test_gaya_dkk_pada_kasus_nama_bentrok():
+    a = S([A("Cooper", "A"), A("Lee", "B"), A("X", "C")], year="2015")
+    b = S([A("Cooper", "A"), A("Ross", "Y"), A("X", "C")], year="2015")
+    assert in_text(a, family_with=[a, b], style="dkk") == "(Cooper, Lee, dkk., 2015)"
+
+
+def test_labels_for_meneruskan_gaya_sitasi():
+    from generator.report import labels_for
+
+    sources = [S([A("Saleh", "Budi"), A("Wijaya", "Ani"), A("Lestari", "Cici")], year="2023")]
+    assert labels_for(sources, {0}, style="dkk") == {0: "(Saleh dkk., 2023)"}
+    assert labels_for(sources, {0}) == {0: "(Saleh et al., 2023)"}
+
