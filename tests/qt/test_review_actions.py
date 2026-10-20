@@ -230,3 +230,21 @@ def test_tombol_simpan_docx_memancarkan_sinyal(qapp, cfg_default):
     page.exportRequested.connect(lambda: got.append(True))
     _button(page._controls, "💾 Simpan DOCX").click()
     assert got == [True]
+
+def test_sunting_sebagian_tidak_menggandakan_sitasi(qapp, cfg_default):
+    page, state = _page(qapp, cfg_default)
+    doc = page._document
+    page.select(state.sentences[0].uid)
+    cursor = doc.textCursor()
+    block = cursor.block()
+    span = next(s for s in block.userData().spans if s["uid"] == state.sentences[0].uid)
+    cursor.setPosition(block.position() + span["start"])
+    cursor.setPosition(block.position() + span["end"], QTextCursor.MoveMode.KeepAnchor)
+    cursor.insertText("Kalimat kedua yang teruji (Santoso, 2020).")
+    page.select(state.sentences[5].uid)  # commit saat pindah kalimat
+    kalimat = next(
+        s for sec in state.sections for p in sec.paragraphs for s in p.sentences
+        if s.uid == state.sentences[0].uid
+    )
+    assert kalimat.text == "Kalimat kedua yang teruji."
+    assert "(Santoso, 2020)(Santoso, 2020)" not in doc.toPlainText()

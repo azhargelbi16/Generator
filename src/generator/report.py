@@ -157,6 +157,34 @@ def display_text(sentence: Sentence, labels: dict[int, str]) -> str:
     return content.compose(Paragraph([sentence]), labels)
 
 
+def strip_rendered_citation(text: str, sentence: Sentence, labels: dict[int, str]) -> str:
+    """Buang sitasi yang ikut tersunting; render berikutnya menambahkannya lagi.
+
+    Dokumen review menampilkan `text` yang sudah memuat sitasi. Bila user menyunting
+    sebagian kalimat (bukan seluruhnya), sitasi itu masih ada di teks hasil suntingan;
+    tanpa dibuang, apply_manual_edit + render menulis sitasi dua kali.
+    """
+    if not (sentence.is_factual and sentence.citation and sentence.source_ids):
+        return text
+    inner: list[str] = []
+    for source_id in labels:
+        if source_id not in sentence.source_ids:
+            continue
+        label = labels[source_id].strip()
+        if label.startswith("(") and label.endswith(")"):
+            label = label[1:-1]
+        inner.append(label)
+    if not inner:
+        return text
+    citation = " (" + "; ".join(inner) + ")"
+    if text.endswith(citation):
+        return text[: -len(citation)]
+    for mark in ".!?":
+        if text.endswith(mark) and text[:-1].endswith(citation):
+            return text[: -1 - len(citation)] + mark
+    return text
+
+
 def restore_citation(sentence: Sentence) -> Sentence:
     """Salinan kalimat dengan sitasi dibuka kembali; objek lama tidak diubah."""
     return Sentence(

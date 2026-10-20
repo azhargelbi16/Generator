@@ -583,6 +583,7 @@ class ReviewPage(QWidget):
             sentence = self._sentence_by_uid(edit["uid"])
             if sentence is None:
                 return
+            teks_baru = report.strip_rendered_citation(teks_baru, sentence, self._labels)
             new_sentence = report.apply_manual_edit(sentence, teks_baru)
             self._swap_sentence(edit["uid"], [new_sentence])
             self._reverify_one(new_sentence)

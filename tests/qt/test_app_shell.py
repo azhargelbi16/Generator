@@ -24,3 +24,13 @@ def test_shell_tanpa_peringatan_bila_api_key_ada(qapp, db_tmp):
     cfg = Config("http://x/v1", "k", "m", 0.2)
     window = build_main_window(db_tmp, cfg)
     assert "API key" not in window.statusBar().currentMessage()
+
+def test_tutup_jendela_menjalankan_shutdown(qapp, db_tmp, cfg_default, monkeypatch):
+    from generator.qt.app import build_main_window
+
+    window = build_main_window(db_tmp, cfg_default)
+    dipanggil = []
+    monkeypatch.setattr(window._laporan, "shutdown", lambda: dipanggil.append("laporan"))
+    monkeypatch.setattr(window._laporan.controller, "shutdown", lambda: dipanggil.append("controller"))
+    window.close()
+    assert dipanggil == ["laporan", "controller"]

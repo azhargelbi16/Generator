@@ -7,12 +7,30 @@ Modul aman diimpor tanpa display; widget hanya dibuat di build_main_window().
 
 from __future__ import annotations
 
+import os
 import sys
+
+from PySide6.QtWidgets import QMainWindow
 
 from .. import config as config_mod
 from .. import database, logging_setup, paths
 
 _API_KEY_HINT = "API key belum diisi; buka tab Pengaturan untuk mengisi endpoint dan API key."
+
+
+class MainWindow(QMainWindow):
+    """Jendela utama: menutup jendela menghentikan worker yang masih berjalan.
+
+    Tanpa ini QThread yang di-parent ke widget ikut dimusnahkan saat jendela tutup
+    dan Qt abort ("QThread: Destroyed while thread is still running").
+    """
+
+    def closeEvent(self, event) -> None:
+        laporan = getattr(self, "_laporan", None)
+        if laporan is not None:
+            laporan.shutdown()
+            laporan.controller.shutdown()
+        super().closeEvent(event)
 
 
 def _ensure_dirs_or_ask() -> bool:
@@ -48,7 +66,7 @@ def build_main_window(db, app_config) -> "QMainWindow":
 
     apply_theme(app)
 
-    window = QMainWindow()
+    window = MainWindow()
     window.setWindowTitle("Generator Laporan")
     window.resize(980, 720)
 
@@ -102,6 +120,12 @@ def main() -> int:
     window.show()
     code = app.exec()
     db.close()
+    from . import workers
+
+    if workers.has_lingering():
+        # Thread yang tak sempat berhenti dalam batas shutdown: lewati destructor
+        # QThread saat interpreter teardown agar Qt tidak abort.
+        os._exit(code)
     return code
 
 

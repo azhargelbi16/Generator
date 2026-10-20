@@ -193,3 +193,29 @@ def test_fallback_tanpa_streaming_enam_kalimat_unik(qapp, db_tmp):
         assert text.count(k) == 1, k
     positions = [text.index(k) for k in kalimat]
     assert positions == sorted(positions)
+
+class _BlockingClient:
+    """chat_stream menggantung sampai cancel ter-set (mensimulasikan generate panjang)."""
+
+    def chat_stream(self, messages, json_mode=False, cancel=None):
+        batas = time.monotonic() + 10
+        while (cancel is None or not cancel.is_set()) and time.monotonic() < batas:
+            time.sleep(0.01)
+        return
+        yield  # pragma: no cover
+
+    def chat(self, messages, json_mode=False):
+        return "{}"
+
+
+def test_shutdown_membatalkan_generate_dan_menunggu_thread(qapp, db_tmp):
+    stage = _stage(_BlockingClient())
+    finished = []
+    stage.finished.connect(finished.append)
+    stage.start_generate(_State(), max_prompt_chars=200)
+    QTest.qWait(80)  # biarkan worker mulai
+    stage.shutdown()
+    assert stage._cancel_event.is_set()
+    assert stage._thread is not None and not stage._thread.isRunning()
+    qapp.processEvents()
+    assert finished == [True]

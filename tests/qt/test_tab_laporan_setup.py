@@ -151,3 +151,18 @@ def test_tombol_generate_memancarkan_signal(qapp, db_tmp):
     ctl.generateRequested.connect(lambda: got.append(True))
     ctl._generate_button.click()
     assert got == [True]
+
+def test_muat_draf_tidak_menimpa_sumber_di_disk(qapp, db_tmp):
+    """Restore draf tidak boleh menulis ulang berkas dengan state setengah jadi."""
+    fields = {"judul": "Laporan Y", "outline": "Pendahuluan", "template": "",
+              "dosen": "", "matkul": "", "logo": ""}
+    sections = report.sections_to_dicts(
+        [Section(1, "Pendahuluan", [Paragraph([Sentence("Klaim faktual.", "kutipan", [0])])])]
+    )
+    drafts.save_draft(
+        drafts.DraftState(draft_id="aktif", fields=fields, sources=[_record()], sections=sections, done=[])
+    )
+    _ctl(db_tmp)
+    state = drafts.load_draft("aktif")
+    assert len(state.sources) == 1, "sumber terhapus dari draf di disk saat load"
+    assert len(state.sections) == 1, "isi laporan terhapus dari draf di disk saat load"

@@ -46,6 +46,27 @@ class Worker(QObject):
             self.finished.emit()
 
 
+_LINGERING: list[QThread] = []
+
+
+def linger(thread: QThread) -> None:
+    """Lepas thread yang belum selesai dari parent agar tidak dimusnahkan saat tutup.
+
+    Dipakai hanya saat shutdown: QThread yang dihancurkan sementara masih berjalan
+    membuat Qt abort. Proses yang masih memegang thread ini keluar lewat os._exit
+    (lihat app.main) supaya destructor QThread tidak sempat jalan.
+    """
+    if thread in _LINGERING:
+        return
+    thread.setParent(None)
+    _LINGERING.append(thread)
+    thread.finished.connect(lambda: _LINGERING.remove(thread) if thread in _LINGERING else None)
+
+
+def has_lingering() -> bool:
+    return any(thread.isRunning() for thread in _LINGERING)
+
+
 def run_in_thread(
     parent: QObject | None,
     work: Callable,

@@ -42,7 +42,7 @@ from ..sources.records import (
     source_to_record,
 )
 from ..verification import SentenceStatus, verify_sections
-from .workers import run_in_thread
+from .workers import linger, run_in_thread
 
 _META_KEYS = ("year", "title", "container", "doi", "url")
 _META_LABELS = {
@@ -80,6 +80,7 @@ class ReportController(QObject):
         self._thread = None
         self._worker = None
         self._last_message = ""
+        self._restoring = False
 
         self.setup_page = QWidget()
         self._build_setup_page(self.setup_page)
@@ -296,6 +297,18 @@ class ReportController(QObject):
         self._status.setText("Penambahan sumber gagal.")
         QMessageBox.warning(self.setup_page, "Gagal memproses sumber", self._last_message)
 
+    def shutdown(self) -> None:
+        """Tunggu worker sumber yang masih membaca agar thread tidak mati bersama jendela."""
+        thread = self._thread
+        if thread is None or not thread.isRunning():
+            return
+        if self._worker is not None:
+            self._worker.request_cancel()
+        # quit() langsung: slot quit antre ke event loop utama yang sedang diblokir wait().
+        thread.quit()
+        if not thread.wait(5000):
+            linger(thread)
+
     def _add_pdf(self) -> None:
         chosen, _selected_filter = QFileDialog.getOpenFileName(
             self.setup_page, "Pilih berkas PDF", "", "PDF (*.pdf);;Semua berkas (*.*)"
@@ -473,6 +486,8 @@ class ReportController(QObject):
         }
 
     def _save_draft(self) -> None:
+        if self._restoring:
+            return
         self.fields = self._collect_fields()
         state = drafts.DraftState(
             draft_id=DRAFT_ACTIVE_ID,
@@ -488,21 +503,27 @@ class ReportController(QObject):
         if state is None:
             self.fields = self._collect_fields()
             return
-        fields = state.fields
-        self._judul_edit.setText(fields.get("judul", ""))
-        if fields.get("outline"):
-            self._outline_edit.setPlainText(fields["outline"])
-        for key in ("dosen", "matkul", "logo"):
-            if fields.get(key):
-                self._pickers[key].setCurrentText(fields[key])
-        self.sources = list(state.sources)
-        self._refresh_source_list()
-        self.sections = report.sections_from_dicts(state.sections)
-        self.done = set(state.done)
-        if self.sections:
-            self._reverify()
-        if fields.get("template"):
-            self._template_combo.setCurrentText(fields["template"])
-            self._on_template_selected()
-        self._update_outline_button()
-        self.fields = self._collect_fields()
+        # Set programatik memicu textChanged/currentIndexChanged yang menyimpan draf;
+        # tanpa penjaga, sumber & isi laporan yang belum dipulihkan tertimpa list kosong.
+        self._restoring = True
+        try:
+            fields = state.fields
+            self._judul_edit.setText(fields.get("judul", ""))
+            if fields.get("outline"):
+                self._outline_edit.setPlainText(fields["outline"])
+            for key in ("dosen", "matkul", "logo"):
+                if fields.get(key):
+                    self._pickers[key].setCurrentText(fields[key])
+            self.sources = list(state.sources)
+            self._refresh_source_list()
+            self.sections = report.sections_from_dicts(state.sections)
+            self.done = set(state.done)
+            if self.sections:
+                self._reverify()
+            if fields.get("template"):
+                self._template_combo.setCurrentText(fields["template"])
+                self._on_template_selected()
+            self._update_outline_button()
+            self.fields = self._collect_fields()
+        finally:
+            self._restoring = False

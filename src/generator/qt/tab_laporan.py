@@ -36,6 +36,10 @@ class TabLaporan(QWidget):
         self.controller.generateRequested.connect(self._mulai_generate)
         self.stage.finished.connect(self._selesai_generate)
 
+    def shutdown(self) -> None:
+        """Batalkan generate yang berjalan sebelum jendela ditutup."""
+        self.stage.shutdown()
+
     def _mulai_generate(self) -> None:
         self._stack.setCurrentWidget(self.stage)
         self.stage.start_generate(self.controller)

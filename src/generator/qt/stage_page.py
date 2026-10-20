@@ -28,7 +28,7 @@ from .. import config, paths
 from ..ai import content
 from ..ai.client import AIClient
 from ..verification import STATUS_NON_FACTUAL, STATUS_UNVERIFIED, STATUS_VERIFIED
-from .workers import run_in_thread
+from .workers import linger, run_in_thread
 
 _STATUS_LABELS = {
     STATUS_VERIFIED: "terverifikasi",
@@ -161,6 +161,17 @@ class StagePage(QWidget):
         if self._worker is not None:
             self._worker.request_cancel()
         self._cancel_button.setEnabled(False)
+
+    def shutdown(self) -> None:
+        """Hentikan generate dan tunggu thread sebelum jendela dimusnahkan."""
+        if self._worker is not None:
+            self._worker.request_cancel()
+        if self._thread is not None and self._thread.isRunning():
+            # quit() dipanggil langsung: koneksi worker.finished -> thread.quit antre
+            # ke event loop utama yang justru sedang diblokir wait().
+            self._thread.quit()
+            if not self._thread.wait(10000):
+                linger(self._thread)
 
     # ------------------------------------------------------------ internal
 
