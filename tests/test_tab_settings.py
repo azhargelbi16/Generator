@@ -1,6 +1,6 @@
 import pytest
 
-from generator.gui.tab_settings import parse_temperature
+from generator.config import parse_temperature
 
 
 def test_parse_temperature_accepts_comma_and_dot():

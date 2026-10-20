@@ -10,7 +10,7 @@ Aplikasi desktop untuk menyusun laporan akademik berbahasa Indonesia dari sumber
 
 ```
 .venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m generator.gui.app
+.venv\Scripts\python -m generator.qt.app
 ```
 
 ## Mengatur layanan AI (tab Pengaturan)
@@ -94,6 +94,8 @@ Bila satu kalimat memakai beberapa sumber, sitasinya digabung dalam satu tanda k
 PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali rapidocr. Kualitas OCR bisa kurang akurat sehingga lebih banyak kalimat ditandai tidak terverifikasi; selalu periksa hasilnya. Model OCR diunduh saat pertama kali menjalankan OCR sehingga butuh internet. Unduhannya dicache di dalam `.venv` (folder `site-packages`), bukan di folder `data\`, sehingga menghapus folder `data\` tidak mengulang unduhan model.
 
 ## Catatan teknis
+
+- Antarmuka ditulis dengan Qt (PySide6). GUI Tkinter lama resmi dipensiunkan pada 20 Oktober 2026 dan tidak lagi disertakan; kode lengkapnya tetap tersimpan di riwayat git (commit sebelum `chore: pensiunkan GUI Tkinter`) bila suatu saat perlu dibandingkan atau dipulihkan.
 
 - Operasi lama (OCR, panggilan AI, ambil web, render DOCX) berjalan di latar sehingga jendela tetap responsif.
 - Sumber panjang diproses per batch lalu digabung dan dideduplikasi; verifikasi kutipan tetap memakai teks lengkap. Pada PDF sangat panjang kualitas isi bisa menurun karena tiap batch menulis bab yang sama dari potongan berbeda.

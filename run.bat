@@ -49,6 +49,6 @@ if not exist ".venv\.deps_ok" (
 rem 4) Jalankan aplikasi
 echo [3/3] Menjalankan aplikasi ...
 set "PYTHONPATH=%~dp0src"
-"%VPY%" -m generator.gui.app
+"%VPY%" -m generator.qt.app
 if errorlevel 1 pause
 endlocal
