@@ -2,6 +2,11 @@
 
 Status hanya menandai bahwa cuplikan benar-benar ada di sumber yang dirujuk,
 bukan bahwa klaimnya benar. Gerbang ekspor ada di Task 17c.
+
+Ambang pencocokan: **kecocokan = substring eksak setelah normalisasi** — tidak
+ada fuzzy matching. Normalisasi menyamakan huruf besar/kecil, merapikan spasi,
+menyambung kata yang terpotong tanda hubung di akhir baris, menyeragamkan
+dash/kutip tipografis, dan membuang soft hyphen.
 """
 
 from __future__ import annotations
@@ -15,10 +20,23 @@ STATUS_UNVERIFIED = "tidak_terverifikasi"
 STATUS_NON_FACTUAL = "bukan_klaim_faktual"
 MIN_WORDS = 8
 
+_TYPOGRAPHY = str.maketrans(
+    {
+        "\u2013": "-",  # en dash
+        "\u2014": "-",  # em dash
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u00ad": "",  # soft hyphen
+    }
+)
+
 
 def normalize(text: str) -> str:
-    """Huruf kecil, sambung kata terpenggal tanda hubung di akhir baris, rapikan spasi (11.2)."""
+    """Normalisasi sebelum pencocokan substring eksak (11.2)."""
     text = text.replace("-\r\n", "").replace("-\n", "")
+    text = text.translate(_TYPOGRAPHY)
     return " ".join(text.lower().split())
 
 

@@ -48,3 +48,27 @@ def test_verify_sections_indexes_every_sentence():
     statuses = verify_sections([sec], {0: GOOD})
     assert [s.status for s in statuses] == [STATUS_VERIFIED, STATUS_NON_FACTUAL]
     assert [s.index for s in statuses] == [0, 1]
+
+
+# --- Task 1.4: ambang pencocokan kutipan ------------------------------------
+
+
+def test_aturan_sambung_kata_lama_tetap_berlaku():
+    assert normalize("about-\none third") == "aboutone third"
+
+
+def test_normalize_membuang_soft_hyphen():
+    assert normalize("presi\u00adsi") == "presisi"
+
+
+def test_kutip_dengan_varian_dash_lolos():
+    texts = {0: "hasil sekitar–satu ton per hektare pada musim kemarau"}
+    quote = "hasil sekitar-satu ton per hektare pada musim kemarau"
+    assert verify_sentence(Sentence("x", quote, [0]), texts) == STATUS_VERIFIED
+
+
+def test_kutip_dengan_kutip_keriting_lolos():
+    texts = {0: "petani memakai istilah 'presisi' dalam praktik harian mereka"}
+    quote = "petani memakai istilah \u2018presisi\u2019 dalam praktik harian mereka"
+    assert verify_sentence(Sentence("x", quote, [0]), texts) == STATUS_VERIFIED
+
