@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QProgressBar,
     QTextEdit,
@@ -290,15 +291,10 @@ class ReportController(QObject):
         self._save_draft()
         self._status.setText(f"Sumber {record['kind']} ditambahkan ({len(self.sources)} total).")
 
-    def _source_failed(self, error: Exception) -> None:
-        if isinstance(error, pdf_reader.SourceReadError):
-            self._last_message = (
-                f"{error}\nGunakan tombol 'Tempel Teks Manual...' untuk sumber ini; "
-                "sumber lain tetap bisa diproses."
-            )
-        else:
-            self._last_message = str(error)
+    def _source_failed(self, error: str) -> None:
+        self._last_message = str(error)
         self._status.setText("Penambahan sumber gagal.")
+        QMessageBox.warning(self.setup_page, "Gagal memproses sumber", self._last_message)
 
     def _add_pdf(self) -> None:
         chosen, _selected_filter = QFileDialog.getOpenFileName(
