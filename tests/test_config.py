@@ -58,3 +58,22 @@ def test_roundtrip_citation_style_dkk(tmp_path):
     config.save_config(cfg, p)
     assert config.load_config(p).citation_style == "dkk"
 
+
+def test_config_lama_tanpa_dosen_review_default_false(tmp_path):
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({
+        "ai_base_url": "http://localhost:20128/v1",
+        "ai_api_key": "k",
+        "ai_model": "m",
+        "ai_temperature": 0.2,
+    }), encoding="utf-8")
+    assert config.load_config(p).dosen_review is False
+
+
+def test_roundtrip_dosen_review_true(tmp_path):
+    p = tmp_path / "config.json"
+    cfg = config.Config("http://localhost:1234/v1", "k", "m", 0.2, dosen_review=True)
+    config.save_config(cfg, p)
+    assert config.load_config(p).dosen_review is True
+
+

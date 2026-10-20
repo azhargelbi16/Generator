@@ -17,6 +17,7 @@ class Config:
     ai_model: str = DEFAULT_MODEL
     ai_temperature: float = 0.2
     citation_style: str = "et_al"
+    dosen_review: bool = False
 
 
 def default_config() -> Config:
@@ -45,6 +46,7 @@ def load_config(path: Path) -> Config:
         ai_model=str(raw.get("ai_model", base.ai_model)),
         ai_temperature=_coerce_float(raw.get("ai_temperature"), base.ai_temperature),
         citation_style=str(raw.get("citation_style", base.citation_style)),
+        dosen_review=bool(raw.get("dosen_review", base.dosen_review)),
     )
 
 
