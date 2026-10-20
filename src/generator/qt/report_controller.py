@@ -410,6 +410,12 @@ class ReportController(QObject):
         raw = self._outline_edit.toPlainText()
         return [line.strip() for line in raw.splitlines() if line.strip()]
 
+    def generate_plan(self):
+        """Rangkum rencana generate untuk StagePage: (topik, outline, sources, texts)."""
+        sources = [record_to_source(record) for record in self.sources]
+        texts = [record.get("text", "") for record in self.sources]
+        return (self._judul_edit.text().strip(), self._outline_content(), sources, texts)
+
     def _update_outline_button(self) -> None:
         self._suggest_button.setVisible(not self._outline_content())
 
