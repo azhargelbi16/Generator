@@ -23,6 +23,12 @@ from ..ai.client import AIClient
 from ..document import renderer
 from ..document.template import TemplateError, validate_template
 from ..sources import pdf_reader, web_reader
+from ..sources.records import (
+    DRAFT_ACTIVE_ID,
+    normalize_metadata,
+    record_to_source,
+    source_to_record,
+)
 from ..verification import (
     STATUS_NON_FACTUAL,
     STATUS_UNVERIFIED,
@@ -35,7 +41,7 @@ from .feedback import Toast, ToolTip
 
 _LOG = logging.getLogger(__name__)
 
-_DRAFT_ID = "aktif"
+_DRAFT_ID = DRAFT_ACTIVE_ID
 
 _AUTHOR_FIELDS = ("family", "given", "is_org", "abbrev")
 
@@ -57,66 +63,8 @@ _NAV_KEYS = {
 }
 
 
-def normalize_metadata(doc: dict[str, str]) -> dict[str, str]:
-    """Samakan kunci metadata dokumen dengan yang dibaca `merge_metadata`.
-
-    Pembaca PDF dan web memancarkan `date` (sering berupa tanggal lengkap atau
-    format internal PDF seperti D:20231019120000), sedangkan penggabungan
-    mengharapkan `year`; ambil 4 digit yang masuk akal sebagai tahun bila ada,
-    tanpa menghapus nilai asli.
-    """
-    result = dict(doc or {})
-    date = result.get("date")
-    if date and not result.get("year"):
-        kandidat = re.findall(r"\d{4}", str(date))
-        pilihan = next(
-            (k for k in kandidat if 1900 <= int(k) <= 2100),
-            kandidat[0] if kandidat else None,
-        )
-        result["year"] = pilihan if pilihan else str(date)
-    return result
-
-
-def source_to_record(source: Source, text: str, kind: str) -> dict:
-    """Ubah hasil AI menjadi dict draf; penulis disalin apa adanya sebagai usulan."""
-    return {
-        "kind": kind,
-        "title": source.title,
-        "year": source.year,
-        "container": source.container,
-        "doi": source.doi,
-        "url": source.url,
-        "authors": [
-            {
-                "family": author.family,
-                "given": author.given,
-                "is_org": bool(author.is_org),
-                "abbrev": author.abbrev,
-            }
-            for author in source.authors
-        ],
-        "text": text,
-    }
-
-
-def record_to_source(record: dict) -> Source:
-    """Bangun ulang `Source` dari dict draf untuk pemakaian modul AI."""
-    return Source(
-        authors=[
-            Author(
-                author.get("family", ""),
-                author.get("given", ""),
-                bool(author.get("is_org", False)),
-                author.get("abbrev", ""),
-            )
-            for author in record.get("authors", [])
-        ],
-        year=record.get("year", ""),
-        title=record.get("title", ""),
-        container=record.get("container", ""),
-        doi=record.get("doi", ""),
-        url=record.get("url", ""),
-    )
+# Helper rekord sumber dan normalisasi metadata pindah ke sources.records
+# supaya modul Qt bisa memakainya tanpa mengimpor tkinter.
 
 
 class ReportController:
