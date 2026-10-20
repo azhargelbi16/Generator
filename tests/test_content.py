@@ -1,3 +1,6 @@
+import json
+import threading
+
 import pytest
 from generator.ai.content import generate_sections, compose, Sentence, Paragraph
 from generator.ai.citation import Author, Source
@@ -123,3 +126,222 @@ def test_partial_bad_batch_keeps_good_sections():
                              [Source([Author("Santoso", "Budi")], "2020", "T", "J")],
                              [long_text], c, max_prompt_chars=500)
     assert secs and secs[0].title == "Pendahuluan"
+
+
+# --- Task 1.3: progress streaming + pembatalan ------------------------------
+
+ANCHOR_REPLY_A = (
+    '{"sections":[{"level":1,"title":"Pendahuluan","paragraphs":[{"sentences":['
+    '{"text":"Pertanian organik meningkat pesat.","quote":"q1","source_ids":[0],"is_factual":true},'
+    '{"text":"Pupuk alami lebih baik.","quote":"q2","source_ids":[0],"is_factual":true}]}]}]}'
+)
+ANCHOR_REPLY_B = (
+    '{"sections":[{"level":2,"title":"Metode","paragraphs":[{"sentences":['
+    '{"text":"Data dikumpulkan lewat wawancara.","quote":"q3","source_ids":[1],"is_factual":true},'
+    '{"text":"Analisis memakai koding tematik.","quote":"q4","source_ids":[1],"is_factual":false}]}]}]}'
+)
+
+# Direkam dari implementasi SEBELUM Task 1.3 (fixture_anchor.py); jangkar anti-regresi.
+ANCHOR_SECTIONS = [
+    {
+        "level": 1,
+        "title": "Pendahuluan",
+        "paragraphs": [{"sentences": [
+            {"text": "Pertanian organik meningkat pesat.", "quote": "q1", "source_ids": [0], "is_factual": True},
+            {"text": "Pupuk alami lebih baik.", "quote": "q2", "source_ids": [0], "is_factual": True},
+        ]}],
+    },
+    {
+        "level": 2,
+        "title": "Metode",
+        "paragraphs": [{"sentences": [
+            {"text": "Data dikumpulkan lewat wawancara.", "quote": "q3", "source_ids": [1], "is_factual": True},
+            {"text": "Analisis memakai koding tematik.", "quote": "q4", "source_ids": [1], "is_factual": False},
+        ]}],
+    },
+]
+
+ANCHOR_SOURCES = [
+    Source([Author("Santoso", "Budi")], "2020", "T", "J"),
+    Source([Author("Wijaya", "Ani")], "2021", "U", "J"),
+]
+ANCHOR_TEXTS = [
+    "Pertanian organik meningkat pesat di berbagai daerah tropis. " * 7,
+    "Pupuk alami lebih baik untuk kesuburan tanah jangka panjang. " * 7,
+]
+
+
+def _serialize(sections) -> list:
+    return [
+        {
+            "level": section.level,
+            "title": section.title,
+            "paragraphs": [
+                {
+                    "sentences": [
+                        {
+                            "text": sentence.text,
+                            "quote": sentence.quote,
+                            "source_ids": list(sentence.source_ids),
+                            "is_factual": sentence.is_factual,
+                        }
+                        for sentence in paragraph.sentences
+                    ]
+                }
+                for paragraph in section.paragraphs
+            ],
+        }
+        for section in sections
+    ]
+
+
+class ProgressRecorder:
+    def __init__(self, cancel_after=None):
+        self.batches = []
+        self.born = []
+        self.finished_flags = []
+        self.cancel = None
+        self.cancel_after = cancel_after
+
+    def batch_started(self, n, total):
+        self.batches.append((n, total))
+
+    def sentence_born(self, sentence, status):
+        self.born.append((sentence.text, status))
+        if self.cancel_after is not None and self.cancel is not None:
+            if len(self.born) >= self.cancel_after:
+                self.cancel.set()
+
+    def finished(self, cancelled):
+        self.finished_flags.append(cancelled)
+
+
+class StreamClient:
+    """Client dengan chat_stream; chat() sengaja gagal agar fallback tak tersamar."""
+
+    def __init__(self, chunk_batches):
+        self.chunk_batches = list(chunk_batches)
+        self.calls = 0
+
+    def chat(self, messages, json_mode=False):
+        raise AssertionError("fallback chat() tidak boleh dipanggil")
+
+    def chat_stream(self, messages, json_mode=False, cancel=None):
+        self.calls += 1
+        chunks = self.chunk_batches.pop(0) if len(self.chunk_batches) > 1 else self.chunk_batches[0]
+        for chunk in chunks:
+            if cancel is not None and cancel.is_set():
+                return
+            yield chunk
+
+
+def test_generate_sections_tanpa_progress_identik_dengan_perilaku_lama():
+    client = FakeClient([ANCHOR_REPLY_A, ANCHOR_REPLY_B])
+    sections = generate_sections(
+        "tema", ["Pendahuluan", "Metode"], ANCHOR_SOURCES, ANCHOR_TEXTS, client,
+        max_prompt_chars=500,
+    )
+    assert client.calls == 2
+    assert _serialize(sections) == ANCHOR_SECTIONS
+
+
+STREAM_TEXTS = [
+    "Pertanian organik meningkat pesat di berbagai daerah tropis termasuk Indonesia. " * 2,
+    "Pupuk alami lebih baik untuk kesuburan tanah jangka panjang. " * 4,
+]
+STREAM_JSON = json.dumps({
+    "sections": [
+        {
+            "level": 1,
+            "title": "Pendahuluan",
+            "paragraphs": [{"sentences": [
+                {
+                    "text": "Satu.",
+                    "quote": "Pertanian organik meningkat pesat di berbagai daerah tropis",
+                    "source_ids": [0],
+                    "is_factual": True,
+                },
+                {"text": "Dua.", "quote": "", "source_ids": [], "is_factual": False},
+            ]}],
+        },
+        {
+            "level": 1,
+            "title": "Metode",
+            "paragraphs": [{"sentences": [
+                {"text": "Tiga.", "quote": "", "source_ids": [], "is_factual": False},
+                {"text": "Empat.", "quote": "", "source_ids": [], "is_factual": False},
+            ]}],
+        },
+    ]
+}, ensure_ascii=False)
+
+
+def _slices(text: str, size: int) -> list[str]:
+    return [text[i : i + size] for i in range(0, len(text), size)]
+
+
+def test_streaming_melahirkan_kalimat_berurutan_dan_tahan_json_patah():
+    progress = ProgressRecorder()
+    client = StreamClient([_slices(STREAM_JSON, 13)])
+    sources = [
+        Source([Author("Santoso", "Budi")], "2020", "T", "J"),
+        Source([Author("Wijaya", "Ani")], "2021", "U", "J"),
+    ]
+    sections = generate_sections(
+        "tema", ["Pendahuluan", "Metode"], sources, STREAM_TEXTS, client,
+        max_prompt_chars=12000, progress=progress,
+    )
+    assert [text for text, _ in progress.born] == ["Satu.", "Dua.", "Tiga.", "Empat."]
+    assert progress.born[0][1] == "terverifikasi"
+    assert progress.born[1][1] == "bukan_klaim_faktual"
+    assert progress.finished_flags == [False]
+    assert progress.batches == [(1, 1)]
+    assert [s.text for p in sections[1].paragraphs for s in p.sentences] == ["Tiga.", "Empat."]
+
+
+def test_cancel_menghentikan_stream_dan_mengembalikan_kalimat_yang_sudah_lahir():
+    cancel = threading.Event()
+    progress = ProgressRecorder(cancel_after=2)
+    progress.cancel = cancel
+    chunks = [
+        '{"sections":[{"level":1,"title":"Pendahuluan","paragraphs":[{"sentences":['
+        '{"text":"Satu.","quote":"","source_ids":[],"is_factual":false}',
+        ',{"text":"Dua.","quote":"","source_ids":[],"is_factual":false}',
+        ',{"text":"Tiga.","quote":"","source_ids":[],"is_factual":false}',
+        ',{"text":"Empat.","quote":"","source_ids":[],"is_factual":false}]}]}]}',
+    ]
+    client = StreamClient([chunks])
+    sources = [
+        Source([Author("Santoso", "Budi")], "2020", "T", "J"),
+        Source([Author("Wijaya", "Ani")], "2021", "U", "J"),
+    ]
+    sections = generate_sections(
+        "tema", ["Pendahuluan", "Metode"], sources, STREAM_TEXTS, client,
+        max_prompt_chars=300, progress=progress, cancel=cancel,
+    )
+    assert progress.finished_flags == [True]
+    assert [text for text, _ in progress.born] == ["Satu.", "Dua."]
+    assert client.calls == 1  # batch kedua tidak pernah dipanggil
+    texts = [s.text for section in sections for p in section.paragraphs for s in p.sentences]
+    assert len(texts) >= 2 and set(texts) == {"Satu.", "Dua."}
+
+
+def test_fallback_tanpa_chat_stream_reveal_per_batch_tanpa_duplikat():
+    progress = ProgressRecorder()
+    client = FakeClient([ANCHOR_REPLY_A, ANCHOR_REPLY_B])
+    sections = generate_sections(
+        "tema", ["Pendahuluan", "Metode"], ANCHOR_SOURCES, ANCHOR_TEXTS, client,
+        max_prompt_chars=500, progress=progress,
+    )
+    assert progress.batches == [(1, 2), (2, 2)]
+    texts = [text for text, _ in progress.born]
+    assert texts == [
+        "Pertanian organik meningkat pesat.",
+        "Pupuk alami lebih baik.",
+        "Data dikumpulkan lewat wawancara.",
+        "Analisis memakai koding tematik.",
+    ]
+    assert len(set(texts)) == len(texts)
+    assert progress.finished_flags == [False]
+    assert _serialize(sections) == ANCHOR_SECTIONS
+

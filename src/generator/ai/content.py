@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from uuid import uuid4
 
 from ..sources.chunking import chunk_text
 from ..textutil import repair_mojibake
 from . import prompts
+from .client import StreamError
 
 _logger = logging.getLogger(__name__)
 
@@ -35,6 +37,23 @@ class Section:
     level: int
     title: str
     paragraphs: list[Paragraph] = field(default_factory=list)
+
+
+@dataclass
+class GenerationProgress:
+    """Callback kemajuan Generate; UI meng-override method, engine tak peduli isinya."""
+
+    batch_count: int = 0
+    sentence_hint: int = 0
+
+    def batch_started(self, n: int, total_batches: int) -> None:
+        self.batch_count = n
+
+    def sentence_born(self, sentence: Sentence, status: str) -> None:
+        self.sentence_hint += 1
+
+    def finished(self, cancelled: bool) -> None:
+        return None
 
 
 def _normalize(text: str) -> str:
@@ -176,6 +195,118 @@ def _order_by_outline(sections: list[Section], outline: list[str]) -> list[Secti
     return sorted(sections, key=lambda section: order.get(_normalize(section.title), len(outline)))
 
 
+_TITLE_RE = re.compile(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"')
+
+
+def _iter_complete_objects(partial: str) -> list[dict]:
+    """Ambil objek JSON utuh berkunci "text" dari JSON yang masih parsial.
+
+    Kalimat terakhir yang belum tertutup diabaikan; pemanggil memanggil ulang
+    saat potongan teks berikutnya datang.
+    """
+    objects: list[dict] = []
+    stack: list[int] = []
+    in_string = False
+    escaped = False
+    for index, char in enumerate(partial):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            stack.append(index)
+        elif char == "}" and stack:
+            start = stack.pop()
+            fragment = partial[start : index + 1]
+            if '"text"' not in fragment:
+                continue
+            try:
+                candidate = json.loads(fragment)
+            except ValueError:
+                continue
+            if isinstance(candidate, dict) and "text" in candidate:
+                objects.append(candidate)
+    return objects
+
+
+def _current_title(partial: str) -> str:
+    """Judul bab terakhir yang terlihat di JSON parsial (untuk pengelompokan batal)."""
+    matches = _TITLE_RE.findall(partial)
+    if not matches:
+        return ""
+    try:
+        return json.loads('"' + matches[-1] + '"')
+    except ValueError:
+        return matches[-1]
+
+
+def _status_of(sentence: Sentence, source_texts_by_id: dict[int, str]) -> str:
+    from ..verification import verify_sentence
+
+    return verify_sentence(sentence, source_texts_by_id)
+
+
+def _stream_batch(client, messages, progress, source_texts_by_id, cancel, emitted):
+    """Alirkan satu batch; kembalikan (data_json_utuh | None, kalimat_terkumpul)."""
+    buffer = ""
+    collected: list[tuple[str, Sentence]] = []
+    try:
+        for chunk in client.chat_stream(messages, json_mode=True, cancel=cancel):
+            if cancel is not None and cancel.is_set():
+                break
+            if not chunk:
+                continue
+            buffer += chunk
+            for raw in _iter_complete_objects(buffer):
+                sentence = _sentence_from_dict(raw)
+                if sentence is None:
+                    continue
+                key = _normalize(sentence.text)
+                if key in emitted:
+                    continue
+                emitted.add(key)
+                progress.sentence_born(sentence, _status_of(sentence, source_texts_by_id))
+                collected.append((_current_title(buffer), sentence))
+    except StreamError:
+        return None, collected
+    return _first_json_object(buffer), collected
+
+
+def _reveal_sentences(data: dict, progress, source_texts_by_id, emitted) -> None:
+    """Fallback non-streaming: lahirkan semua kalimat setelah batch selesai, urut JSON."""
+    for section in _sections_from_dict(data):
+        for paragraph in section.paragraphs:
+            for sentence in paragraph.sentences:
+                key = _normalize(sentence.text)
+                if key in emitted:
+                    continue
+                emitted.add(key)
+                progress.sentence_born(sentence, _status_of(sentence, source_texts_by_id))
+
+
+def _partial_sections(collected: list[tuple[str, Sentence]]) -> list[Section]:
+    """Susun kalimat yang sudah lahir menjadi bab/paragraf saat generate dibatalkan."""
+    result: list[Section] = []
+    by_title: dict[str, Section] = {}
+    for title, sentence in collected:
+        key = _normalize(title)
+        section = by_title.get(key)
+        if section is None:
+            section = Section(1, title, [])
+            by_title[key] = section
+            result.append(section)
+        if not section.paragraphs:
+            section.paragraphs.append(Paragraph([]))
+        section.paragraphs[0].sentences.append(sentence)
+    return result
+
+
 def generate_sections(
     topic: str,
     outline: list[str],
@@ -183,8 +314,15 @@ def generate_sections(
     source_texts: list[str],
     client,
     max_prompt_chars: int = 12000,
+    progress: GenerationProgress | None = None,
+    cancel=None,
 ) -> list[Section]:
-    """Tulis isi laporan per batch chunk; satu panggilan AI per batch (12.3)."""
+    """Tulis isi laporan per batch chunk; satu panggilan AI per batch (12.3).
+
+    Tanpa `progress` dan `cancel`, keluarannya sama persis dengan perilaku lama.
+    Dengan `progress`, kalimat dilaporkan saat lahir (streaming bila client
+    mendukung `chat_stream`, selain itu per batch setelah jawaban utuh tiba).
+    """
     if not source_texts:
         raise ValueError("Teks sumber kosong; tidak ada dasar untuk menulis isi.")
     if len(sources) != len(source_texts):
@@ -195,17 +333,46 @@ def generate_sections(
         for chunk in chunk_text(text, max_chars=max_prompt_chars):
             chunk_refs.append((source_id, chunk.text))
 
+    batches = list(_batches(chunk_refs, max_prompt_chars))
+    source_texts_by_id = {index: text for index, text in enumerate(source_texts)}
+    emitted: set[str] = set()
     sections: list[Section] = []
     total = 0
     gagal = 0
-    for batch in _batches(chunk_refs, max_prompt_chars):
+    cancelled = False
+    for number, batch in enumerate(batches, start=1):
+        if cancel is not None and cancel.is_set():
+            cancelled = True
+            break
         total += 1
-        reply = client.chat(prompts.content_prompt(topic, outline, sources, batch), json_mode=True)
-        data = _first_json_object(reply)
+        if progress is not None:
+            progress.batch_started(number, len(batches))
+        messages = prompts.content_prompt(topic, outline, sources, batch)
+        data = None
+        collected: list[tuple[str, Sentence]] = []
+        use_stream = progress is not None and hasattr(client, "chat_stream")
+        if use_stream:
+            data, collected = _stream_batch(
+                client, messages, progress, source_texts_by_id, cancel, emitted
+            )
+        if cancel is not None and cancel.is_set():
+            cancelled = True
+            if collected:
+                _merge_sections(sections, _partial_sections(collected))
+            break
+        if not use_stream or data is None:
+            reply = client.chat(messages, json_mode=True)
+            data = _first_json_object(reply)
+            if data is not None and progress is not None:
+                _reveal_sentences(data, progress, source_texts_by_id, emitted)
         if data is None:
             gagal += 1
             continue
         _merge_sections(sections, _sections_from_dict(data))
+    if progress is not None:
+        progress.finished(cancelled)
+    if cancelled:
+        return _order_by_outline(sections, outline)
     if total and gagal == total:
         raise ValueError("Respons AI tidak terbaca (JSON tidak valid) pada semua batch.")
     if gagal:
