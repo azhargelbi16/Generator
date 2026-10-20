@@ -9,12 +9,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SIM = ROOT / ".superpowers" / "user_sim_qt_biochar.py"
 
 
 def test_simulasi_e2e_qt_biochar_tanpa_ai_nyata():
-    assert SIM.is_file(), f"sim tidak ada: {SIM}"
+    if not SIM.is_file():
+        pytest.skip(
+            f"sim E2E lokal tidak ada ({SIM}); letakkan skrip sim QT_QPA_PLATFORM=offscreen "
+            "di path itu untuk menjalankan pemeriksaan end-to-end biochar."
+        )
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     env["QT_QPA_PLATFORM"] = "offscreen"  # sim memang dirancang offscreen
