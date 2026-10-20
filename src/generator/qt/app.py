@@ -40,8 +40,8 @@ def _ensure_dirs_or_ask() -> bool:
 
 
 def build_main_window(db, app_config) -> "QMainWindow":
-    """Bangun jendela utama; tab Laporan/Review Hasil placeholder sampai fase 3-4."""
-    from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QWidget
+    """Bangun jendela utama dengan kelima tab asli yang sudah ter-wiring."""
+    from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget
 
     app = QApplication.instance()
     from .theme import apply_theme
@@ -52,15 +52,29 @@ def build_main_window(db, app_config) -> "QMainWindow":
     window.setWindowTitle("Generator Laporan")
     window.resize(980, 720)
 
+    from .review_page import ReviewPage
+    from .tab_data import DataTab
+    from .tab_laporan import TabLaporan
+    from .tab_settings import SettingsTab
+    from .tab_template import TemplateTab
+
     tabs = QTabWidget()
     tabs.setDocumentMode(True)
-    tabs.addTab(QWidget(), "Data")  # diganti DataTab pada Task 2.3
-    tabs.addTab(QWidget(), "Template")  # diganti TemplateTab pada Task 2.4
-    tabs.addTab(QWidget(), "Laporan")  # setup + Panggung pada Task 3.x
-    tabs.addTab(QWidget(), "Review Hasil")  # ReviewPage pada Task 4.x
-    tabs.addTab(QWidget(), "Pengaturan")  # SettingsTab pada Task 2.5
+    tabs.addTab(DataTab(db), "Data")
+    tabs.addTab(TemplateTab(db), "Template")
+    laporan = TabLaporan(db, paths.CONFIG_PATH)
+    tabs.addTab(laporan, "Laporan")
+    review = ReviewPage(laporan.controller, cfg=app_config)
+    tabs.addTab(review, "Review Hasil")
+    tabs.addTab(SettingsTab(paths.CONFIG_PATH), "Pengaturan")
     window.setCentralWidget(tabs)
     window.tabs = tabs
+
+    # Integrasi alur: selesai generate -> muat ulang review (+auto review dosen bila config).
+    laporan.generateFinished.connect(review.render_document)
+    laporan.generateFinished.connect(review.on_generate_finished)
+    window._laporan = laporan
+    window._review = review
 
     if not app_config.ai_api_key:
         window.statusBar().showMessage(_API_KEY_HINT)
