@@ -11,6 +11,7 @@ Keputusan putaran 6 yang dipegang modul ini:
 
 from __future__ import annotations
 
+import re
 from datetime import date
 
 from .ai import content
@@ -27,6 +28,21 @@ _BULAN_INDONESIA = (
 def format_tanggal(d: date) -> str:
     """Tanggal dalam bahasa Indonesia, mis. 18 Oktober 2026 (18.5)."""
     return f"{d.day} {_BULAN_INDONESIA[d.month - 1]} {d.year}"
+
+
+_ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*]')
+_UNDERSCORE_RUN = re.compile(r"_+")
+
+
+def sanitize_filename(judul: str, max_len: int = 80) -> str:
+    """Nama berkas aman untuk Windows: tanpa karakter ilegal, titik diganti
+    garis bawah ("4.0" -> "4_0"), spasi digarisbawahi, rapatkan garis bawah,
+    potong `max_len`, fallback "laporan" bila kosong."""
+    text = _ILLEGAL_FILENAME.sub("", judul)
+    text = text.replace(".", "_")
+    text = "_".join(text.split())
+    text = _UNDERSCORE_RUN.sub("_", text).strip("_")
+    return text[:max_len] or "laporan"
 
 
 def build_fields(

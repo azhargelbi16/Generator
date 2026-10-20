@@ -114,3 +114,32 @@ def test_display_text_faktual_tanpa_sitasi_tetap_polos():
     assert display_text(Sentence("Faktual tanpa sitasi."), {0: "(X, 2020)"}) == (
         "Faktual tanpa sitasi."
     )
+
+
+# --- Task 1.6: sanitasi nama berkas ------------------------------------------
+
+
+def test_sanitize_filename_titik_jadi_garis_bawah():
+    from generator.report import sanitize_filename
+
+    assert sanitize_filename("Pertanian 4.0 untuk Produksi") == "Pertanian_4_0_untuk_Produksi"
+
+
+def test_sanitize_filename_hapus_karakter_ilegal_windows():
+    from generator.report import sanitize_filename
+
+    assert sanitize_filename('tes<>:"/\\|?*nama') == "tesnama"
+
+
+def test_sanitize_filename_potong_80_karakter():
+    from generator.report import sanitize_filename
+
+    assert len(sanitize_filename("a" * 200)) == 80
+
+
+def test_sanitize_filename_kosong_jadi_laporan():
+    from generator.report import sanitize_filename
+
+    assert sanitize_filename("") == "laporan"
+    assert sanitize_filename("   ...") == "laporan"
+

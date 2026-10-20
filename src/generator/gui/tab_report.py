@@ -1080,7 +1080,7 @@ class ReportController:
             item = next((l for l in self._logo_list if l.nama == logo_name), None)
             if item is not None and item.path:
                 logo_path = Path(item.path)
-        safe_judul = re.sub(r"[^\w\- ]", "", judul).strip().replace(" ", "_") or "laporan"
+        safe_judul = report.sanitize_filename(judul)
         out_path = paths.OUTPUT_DIR / f"{safe_judul}.docx"
         if out_path.exists():
             if not messagebox.askyesno(
