@@ -1097,7 +1097,8 @@ class ReportController:
 
         def work():
             return renderer.render_report(
-                template_path, fields, sections, references, logo_path, out_path, labels=labels
+                template_path, fields, sections, references, logo_path, out_path, labels=labels,
+                update_fields=True,
             )
 
         def on_success(result) -> None:

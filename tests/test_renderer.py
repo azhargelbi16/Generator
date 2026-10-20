@@ -116,3 +116,30 @@ def test_references_hanging_indent(tmp_path):
     assert ref.paragraph_format.left_indent is not None
     assert ref.paragraph_format.first_line_indent is not None
     assert ref.paragraph_format.first_line_indent < 0
+
+
+# --- Task 1.7: updateFields Word ---------------------------------------------
+
+
+def _settings_xml(path) -> str:
+    import zipfile
+
+    with zipfile.ZipFile(path) as archive:
+        return archive.read("word/settings.xml").decode("utf-8")
+
+
+def test_update_fields_true_menambah_flag_update_fields(tmp_path):
+    out = renderer.render_report(
+        _tmpl(tmp_path), {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS},
+        [], [], None, tmp_path / "o.docx", update_fields=True,
+    )
+    assert 'w:updateFields w:val="true"' in _settings_xml(out)
+
+
+def test_update_fields_default_tanpa_flag(tmp_path):
+    out = renderer.render_report(
+        _tmpl(tmp_path), {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS},
+        [], [], None, tmp_path / "o.docx",
+    )
+    assert "updateFields" not in _settings_xml(out)
+

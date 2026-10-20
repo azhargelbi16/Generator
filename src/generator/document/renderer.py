@@ -100,6 +100,18 @@ def _place_toc(paragraph: DocxParagraph) -> None:
     _remove_paragraph(paragraph)
 
 
+def _enable_update_fields(doc) -> None:
+    """Minta Word memperbarui field (daftar isi) saat dokumen pertama dibuka."""
+    from docx.oxml.ns import qn
+
+    settings = doc.settings.element
+    if settings.find(qn("w:updateFields")) is not None:
+        return
+    element = OxmlElement("w:updateFields")
+    element.set(qn("w:val"), "true")
+    settings.append(element)
+
+
 def _place_body(doc, paragraph: DocxParagraph, sections, labels) -> None:
     for section in sections:
         heading_style = _heading_style(doc, section.level)
@@ -130,9 +142,12 @@ def render_report(
     logo_path: Path | None,
     output_path: Path,
     labels: dict[int, str] | None = None,
+    update_fields: bool = False,
 ) -> Path:
     doc = template.load_template(template_path)
     labels = labels or {}
+    if update_fields:
+        _enable_update_fields(doc)
 
     mapping = {key: value for key, value in fields.items() if key not in template.SPECIAL_PLACEHOLDERS}
     for name in template.OPTIONAL_PLACEHOLDERS:
