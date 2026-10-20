@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import config, paths, report
-from ..ai import content
+from ..ai import content, dosen
 from ..ai.client import AIClient
 from ..sources.records import record_to_source
 from ..verification import (
@@ -39,6 +39,8 @@ from ..verification import (
     STATUS_VERIFIED,
     verify_sentence,
 )
+from .dosen_panel import DosenPanel
+from .workers import run_in_thread
 
 _STATUS_LABELS = {
     STATUS_VERIFIED: "terverifikasi",
@@ -165,6 +167,9 @@ class ReviewPage(QWidget):
         self._nav = QListWidget()
         self._nav.itemClicked.connect(self._on_nav_clicked)
         nav_layout.addWidget(self._nav)
+        self._dosen_panel = DosenPanel()
+        self._dosen_panel.noteActivated.connect(self._on_dosen_note)
+        nav_layout.addWidget(self._dosen_panel)
         layout.addWidget(nav_box, stretch=1)
         self._section_positions: dict[int, int] = {}
         self.exportRequested.connect(self._export_docx)
@@ -192,6 +197,9 @@ class ReviewPage(QWidget):
         tombol_docx = QPushButton("💾 Simpan DOCX")
         tombol_docx.clicked.connect(lambda: self.exportRequested.emit())
         row.addWidget(tombol_docx)
+        tombol_dosen = QPushButton("🎓 Minta review Dosen")
+        tombol_dosen.clicked.connect(self._request_dosen_review)
+        row.addWidget(tombol_dosen)
         row.addStretch(1)
         return bar
 
@@ -678,8 +686,6 @@ class ReviewPage(QWidget):
         def work():
             return content.paraphrase(content.Paragraph([sentence]), sources, texts, self._client_factory())
 
-        from .workers import run_in_thread
-
         self._thread, self._worker = run_in_thread(self, work)
         self._worker.result.connect(lambda paragraph: self._on_paraphrased(sentence.uid, paragraph))
         self._worker.error.connect(lambda _e: self._info.setText("Parafrase gagal."))
@@ -691,6 +697,53 @@ class ReviewPage(QWidget):
             return
         self._swap_sentence(uid, new_sentences)
         self._after_structure_change("Parafrase selesai; kalimat baru dihitung ulang statusnya.")
+
+    # --------------------------------------------------------- mode dosen
+
+    def _request_dosen_review(self) -> None:
+        """Worker menjalankan review_report; hasil ke panel margin (tidak masuk DOCX)."""
+        sources = [record_to_source(r) for r in self.state.sources]
+        cited = report.cited_ids(self.state.statuses)
+        references = report.references_for(sources, cited)
+        sections = report.sections_from_dicts(report.sections_to_dicts(self.state.sections))
+        self._info.setText("Menunggu review dosen...")
+
+        def work():
+            return dosen.review_report(sections, references, self._client_factory())
+
+        self._thread, self._worker = run_in_thread(self, work)
+        self._worker.result.connect(self._on_dosen_result)
+        self._worker.error.connect(self._on_dosen_error)
+
+    def _on_dosen_result(self, notes) -> None:
+        if not notes:
+            self._info.setText("Review dosen tidak tersedia.")
+            return
+        self._dosen_panel.show_notes(notes)
+        self._info.setText(f"Review dosen: {len(notes)} catatan.")
+
+    def _on_dosen_error(self, _error) -> None:
+        self._info.setText("Review dosen tidak tersedia.")
+
+    def on_generate_finished(self) -> None:
+        """Dipanggil wiring aplikasi saat generate selesai; auto-review bila config minta."""
+        if self._cfg.dosen_review:
+            self._request_dosen_review()
+
+    def _on_dosen_note(self, uid: str) -> None:
+        self.select(uid)
+        block = self._document.document().firstBlock()
+        while block.isValid():
+            data = block.userData()
+            if data is not None:
+                for span in data.spans:
+                    if span["uid"] == uid:
+                        cursor = self._document.textCursor()
+                        cursor.setPosition(block.position() + span["start"])
+                        self._document.setTextCursor(cursor)
+                        self._document.ensureCursorVisible()
+                        return
+            block = block.next()
 
     # ------------------------------------------------------------ navigasi
 
