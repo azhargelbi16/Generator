@@ -167,6 +167,7 @@ class ReviewPage(QWidget):
         nav_layout.addWidget(self._nav)
         layout.addWidget(nav_box, stretch=1)
         self._section_positions: dict[int, int] = {}
+        self.exportRequested.connect(self._export_docx)
         # Referensi kuat data blok: PySide6 tidak memindahkan kepemilikan
         # QTextBlockUserData, jadi bila wrapper Python di-GC objek C++ ikut
         # terhapus dan dokumen menyimpan pointer liar (crash heap saat teardown).
@@ -193,6 +194,19 @@ class ReviewPage(QWidget):
         row.addWidget(tombol_docx)
         row.addStretch(1)
         return bar
+
+    def _export_docx(self) -> None:
+        from .preflight_dialog import export_report
+
+        try:
+            path = export_report(self.state)
+        except Exception as error:  # jalur lengkap butuh state penuh (db, template)
+            self._info.setText(f"Penyimpanan DOCX gagal: {error}")
+            return
+        if path is None:
+            self._info.setText("Simpan dibatalkan.")
+        else:
+            self._info.setText(f"DOCX tersimpan: {path}")
 
     def _build_toolbar(self) -> QWidget:
         bar = QWidget(self, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
