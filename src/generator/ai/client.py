@@ -144,3 +144,23 @@ def check_connection(client: AIClient) -> tuple[bool, str]:
     except Exception as exc:
         return False, str(exc)
     return True, "Koneksi berhasil"
+
+
+def list_models(cfg: Config) -> list[str]:
+    """Ambil daftar id model dari GET {base}/models; AIError bila tak didukung."""
+    url = f"{cfg.ai_base_url.rstrip('/')}/models"
+    headers = {"Authorization": f"Bearer {cfg.ai_api_key}"}
+    try:
+        response = requests.get(url, headers=headers, timeout=TIMEOUT)
+    except Exception as exc:
+        raise AIError(f"Gagal mengambil daftar model: {exc}") from exc
+    if response.status_code >= 400:
+        raise AIError(
+            f"Layanan AI menolak permintaan (HTTP {response.status_code})."
+        )
+    try:
+        data = response.json()
+        ids = [entry["id"] for entry in data["data"]]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise AIError("Layanan AI tidak mendukung daftar model.") from exc
+    return ids

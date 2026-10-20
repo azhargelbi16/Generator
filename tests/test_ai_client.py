@@ -167,3 +167,57 @@ def test_unparseable_body_raises_clear_error(monkeypatch):
     monkeypatch.setattr("generator.ai.client.requests.post", lambda *a, **k: Resp())
     with pytest.raises(AIError, match="tidak dikenal"):
         AIClient(_cfg()).chat([{"role": "user", "content": "ping"}])
+
+
+# --- Task 2.5: daftar model dari GET {base}/models ---------------------------
+
+
+def _fake_get(monkeypatch, payload=None, status=200, raises=None):
+    if raises is not None:
+        def boom(*a, **k):
+            raise raises
+
+        monkeypatch.setattr("generator.ai.client.requests.get", boom)
+        return
+
+    class Resp:
+        def __init__(self):
+            self.status_code = status
+
+        def json(self):
+            if isinstance(payload, Exception):
+                raise payload
+            return payload
+
+    monkeypatch.setattr("generator.ai.client.requests.get", lambda *a, **k: Resp())
+
+
+def test_list_models_mengembalikan_id_urut_server(monkeypatch):
+    from generator.ai.client import list_models
+
+    _fake_get(monkeypatch, {"data": [{"id": "m2"}, {"id": "m1"}]})
+    assert list_models(_cfg()) == ["m2", "m1"]
+
+
+def test_list_models_http_400_ditolak(monkeypatch):
+    from generator.ai.client import list_models
+
+    _fake_get(monkeypatch, {}, status=404)
+    with pytest.raises(AIError):
+        list_models(_cfg())
+
+
+def test_list_models_format_asam_ditolak(monkeypatch):
+    from generator.ai.client import list_models
+
+    _fake_get(monkeypatch, {"data": "bukan-list"})
+    with pytest.raises(AIError, match="tidak mendukung"):
+        list_models(_cfg())
+
+
+def test_list_models_jaringan_error_dibungkus(monkeypatch):
+    from generator.ai.client import list_models
+
+    _fake_get(monkeypatch, raises=Exception("jaringan putus"))
+    with pytest.raises(AIError, match="jaringan putus"):
+        list_models(_cfg())

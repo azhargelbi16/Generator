@@ -20,6 +20,21 @@ class Config:
     dosen_review: bool = False
 
 
+_PESAN_SUHU_ANGKA = "Temperatur harus berupa angka, mis. 0.2"
+_PESAN_SUHU_RENTANG = "Temperatur harus di antara 0 dan 2"
+
+
+def parse_temperature(text: str) -> float:
+    """Terima koma atau titik desimal; tolak bukan angka dan nilai di luar 0-2."""
+    try:
+        temperature = float(text.strip().replace(",", "."))
+    except ValueError:
+        raise ValueError(_PESAN_SUHU_ANGKA) from None
+    if not 0.0 <= temperature <= 2.0:
+        raise ValueError(_PESAN_SUHU_RENTANG)
+    return temperature
+
+
 def default_config() -> Config:
     return Config()
 

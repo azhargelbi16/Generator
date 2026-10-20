@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from ..ai import client
-from ..config import Config, load_config, save_config
+from ..config import Config, load_config, parse_temperature, save_config
 from .feedback import Toast, ToolTip
 from .worker import run_in_thread
 
@@ -15,20 +15,6 @@ _PRIVACY_NOTE = (
     "Catatan: API key disimpan apa adanya (belum terenkripsi) di config.json, dan teks "
     "sumber dokumen/web akan dikirim ke layanan AI pada endpoint di atas saat membuat laporan."
 )
-
-_PESAN_SUHU_ANGKA = "Temperatur harus berupa angka, mis. 0.2"
-_PESAN_SUHU_RENTANG = "Temperatur harus di antara 0 dan 2"
-
-
-def parse_temperature(text: str) -> float:
-    """Terima koma atau titik desimal; tolak bukan angka dan nilai di luar 0-2."""
-    try:
-        temperature = float(text.strip().replace(",", "."))
-    except ValueError:
-        raise ValueError(_PESAN_SUHU_ANGKA) from None
-    if not 0.0 <= temperature <= 2.0:
-        raise ValueError(_PESAN_SUHU_RENTANG)
-    return temperature
 
 
 class SettingsTab(ttk.Frame):
