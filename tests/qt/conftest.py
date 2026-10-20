@@ -18,6 +18,11 @@ def qapp():
 
     app = QApplication.instance() or QApplication([])
     yield app
+    # Hancurkan widget tersisa secara eksplisit: mencegah double-free PySide6
+    # saat QApplication di-teardown di akhir proses (heap corruption 0xC0000374).
+    for widget in app.topLevelWidgets():
+        widget.deleteLater()
+    app.processEvents()
     app.quit()
 
 
