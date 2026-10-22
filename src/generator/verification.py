@@ -55,7 +55,21 @@ def _get_source_text(source_texts: dict[int, str] | list[str], source_id: int) -
     return ""
 
 
-def verify_sentence(sentence: Sentence, source_texts: dict[int, str] | list[str], min_words: int = MIN_WORDS) -> str:
+def normalize_sources(source_texts: dict[int, str] | list[str]) -> dict[int, str]:
+    """Pra-normalisasi seluruh teks sumber ke dictionary agar pencocokan kutipan efisien."""
+    if isinstance(source_texts, dict):
+        return {k: normalize(v) for k, v in source_texts.items()}
+    if isinstance(source_texts, (list, tuple)):
+        return {i: normalize(t) for i, t in enumerate(source_texts)}
+    return {}
+
+
+def verify_sentence(
+    sentence: Sentence,
+    source_texts: dict[int, str] | list[str],
+    min_words: int = MIN_WORDS,
+    normalized_sources: dict[int, str] | None = None,
+) -> str:
     """Cek cuplikan kalimat terhadap teks sumber yang dirujuknya, tanpa AI."""
     if not sentence.is_factual:
         return STATUS_NON_FACTUAL
@@ -65,13 +79,18 @@ def verify_sentence(sentence: Sentence, source_texts: dict[int, str] | list[str]
     if not quote or len(quote.split()) < min_words or not sentence.source_ids:
         return STATUS_UNVERIFIED
     for source_id in sentence.source_ids:
-        if quote in normalize(_get_source_text(source_texts, source_id)):
+        if normalized_sources is not None and source_id in normalized_sources:
+            src_norm = normalized_sources[source_id]
+        else:
+            src_norm = normalize(_get_source_text(source_texts, source_id))
+        if quote in src_norm:
             return STATUS_VERIFIED
     return STATUS_UNVERIFIED
 
 
-def verify_sections(sections: list[Section], source_texts: dict[int, str]) -> list[SentenceStatus]:
+def verify_sections(sections: list[Section], source_texts: dict[int, str] | list[str]) -> list[SentenceStatus]:
     """Status untuk setiap kalimat, daftar datar dengan `index` global berurutan."""
+    cached = normalize_sources(source_texts)
     statuses: list[SentenceStatus] = []
     for section in sections:
         for paragraph in section.paragraphs:
@@ -80,7 +99,7 @@ def verify_sections(sections: list[Section], source_texts: dict[int, str]) -> li
                     SentenceStatus(
                         index=len(statuses),
                         sentence=sentence,
-                        status=verify_sentence(sentence, source_texts),
+                        status=verify_sentence(sentence, source_texts, normalized_sources=cached),
                     )
                 )
     return statuses

@@ -72,3 +72,13 @@ def test_kutip_dengan_kutip_keriting_lolos():
     quote = "petani memakai istilah \u2018presisi\u2019 dalam praktik harian mereka"
     assert verify_sentence(Sentence("x", quote, [0]), texts) == STATUS_VERIFIED
 
+
+
+def test_normalize_sources_and_cached_verification():
+    from generator.verification import normalize_sources
+    source_texts = ["Teks sumber pertama tentang " + GOOD, "Sumber kedua"]
+    cached = normalize_sources(source_texts)
+    assert 0 in cached and 1 in cached
+    sec = Section(1, "Bab 1", [Paragraph([Sentence("Kalimat.", GOOD, [0])])])
+    statuses = verify_sections([sec], source_texts)
+    assert statuses[0].status == STATUS_VERIFIED

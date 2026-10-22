@@ -45,7 +45,7 @@ ke atas       |
       Kembali  Tab Buat Laporan
       ke atas         |
                       v
-        Masukkan sumber: PDF / Web / Teks manual
+        Masukkan sumber: PDF / DOI (CrossRef) / Web / Teks manual
                       |
                       v
         Koreksi metadata penulis jika perlu
@@ -112,7 +112,7 @@ ke atas       |
 Ini adalah gambaran bagian-bagian dalam aplikasi dan bagaimana mereka saling berinteraksi:
 
 ```
-ANTARMUKA PENGGUNA (Qt PySide6)
+ANTARMUKA PENGGUNA (React 19 + TypeScript + Tailwind via pywebview)
 --------------------------------
 [Tab Data]   [Tab Template]   [Tab Buat Laporan]   [Tab Review Hasil]   [Tab Pengaturan]
        \          |                  |                    |                 /
@@ -271,10 +271,10 @@ File DOCX disimpan di folder output\
 |-------------|-----|------------|
 | `data\` | Database SQLite, config.json, logo, template, draf, log | Semua data pengguna disimpan di sini |
 | `data\config.json` | Pengaturan AI | Berisi API key (jangan dibagikan!) |
-| `data\drafts\` | Draf otomatis | Disimpan setiap kali ada perubahan, dihapus setelah ekspor sukses |
+| `data\drafts\` | Draf otomatis | Disimpan otomatis dan dapat dikelola via tombol Kelola Draf & Proyek |
 | `output\` | Hasil file DOCX | Hasil akhir laporan siap dicetak |
 | `run.bat` | Skrip peluncur | Membuat virtual environment dan membuka aplikasi |
-| `requirements.txt` | Daftar paket Python yang dibutuhkan | PySide6, python-docx, pypdfium2, rapidocr, dll. |
+| `requirements.txt` | Daftar paket Python yang dibutuhkan | pywebview, python-docx, pypdfium2, rapidocr, dll. |
 
 ---
 

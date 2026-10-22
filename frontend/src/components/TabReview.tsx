@@ -13,7 +13,13 @@ import {
   RotateCcw,
   Sparkles,
   X,
-  FileCheck2
+  FileCheck2,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  ListOrdered,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { 
   api, 
@@ -22,6 +28,7 @@ import {
   SourceRecord, 
   SentenceStatus 
 } from '../lib/api';
+import { toast } from '../lib/toast';
 
 interface TabReviewProps {
   onExportSuccess: (path: string) => void;
@@ -49,6 +56,23 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
   const [preflightIssues, setPreflightIssues] = useState<Array<{ kind: string; message: string }>>([]);
   const [preflightChecks, setPreflightChecks] = useState<Array<{ label: string; ok: boolean; detail: string }>>([]);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Canvas Studio & View Controls
+  const [zoom, setZoom] = useState<number>(100);
+  const [fitWidth, setFitWidth] = useState<boolean>(false);
+  const [showOutline, setShowOutline] = useState<boolean>(true);
+  const [readingMode, setReadingMode] = useState<boolean>(false);
+
+  const handleZoomIn = () => setZoom((prev) => Math.min(150, prev + 15));
+  const handleZoomOut = () => setZoom((prev) => Math.max(70, prev - 15));
+  const handleResetZoom = () => setZoom(100);
+
+  const handleScrollToSection = (secIdx: number) => {
+    const el = document.getElementById(`section-heading-${secIdx}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   useEffect(() => {
     loadDraft();
@@ -159,7 +183,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
         if (newStatuses) setStatuses(newStatuses);
         saveCurrentDraft(updated, doneUids);
       } else {
-        alert(res?.error || 'Gagal memparafrase kalimat.');
+        toast.error(res?.error || 'Gagal memparafrase kalimat.');
       }
     } finally {
       setParaphrasing(false);
@@ -220,7 +244,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
       if (res?.success && res.notes) {
         setDosenNotes(res.notes);
       } else {
-        alert(res?.error || 'Gagal meminta review dosen.');
+        toast.error(res?.error || 'Gagal meminta review dosen.');
       }
     } finally {
       setLoadingDosen(false);
@@ -259,7 +283,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
         setExportModalOpen(false);
         onExportSuccess(res.output_path);
       } else {
-        alert(res?.error || 'Ekspor dokumen gagal.');
+        toast.error(res?.error || 'Ekspor dokumen gagal.');
       }
     } finally {
       setIsExporting(false);
@@ -270,7 +294,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
   const totalSentences = statuses.length;
   const verifiedCount = statuses.filter((s) => s.status === 'terverifikasi').length;
   const unverifiedCount = statuses.filter((s) => s.status === 'belum_terverifikasi').length;
-  const nonFactualCount = statuses.filter((s) => s.status === 'bukan_klaim').length;
+  const nonFactualCount = statuses.filter(
+    (s) => s.status === 'bukan_klaim' || s.status === 'bukan_klaim_faktual'
+  ).length;
   const doneCount = doneUids.size;
 
   const selectedSentence = selectedUid ? findSentence(selectedUid) : null;
@@ -298,8 +324,67 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
           </span>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons & Canvas Controls */}
         <div className="flex items-center space-x-2">
+          {/* Zoom and Outline Controls */}
+          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 mr-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setShowOutline(!showOutline)}
+              className={`p-1.5 rounded-md transition ${
+                showOutline ? 'bg-white text-brand-700 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Tampilkan / Sembunyikan Struktur Bab"
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-[1px] h-4 bg-slate-300 mx-1" />
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              className="p-1.5 rounded-md hover:bg-white text-slate-600 transition"
+              title="Perkecil Lembar Kerja"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleResetZoom}
+              className="px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-700 hover:bg-white rounded transition"
+              title="Kembalikan ke 100%"
+            >
+              {zoom}%
+            </button>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              className="p-1.5 rounded-md hover:bg-white text-slate-600 transition"
+              title="Perbesar Lembar Kerja"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-[1px] h-4 bg-slate-300 mx-1" />
+            <button
+              type="button"
+              onClick={() => setFitWidth(!fitWidth)}
+              className={`p-1.5 rounded-md transition ${
+                fitWidth ? 'bg-white text-brand-700 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title={fitWidth ? "Kembali ke Lebar Kertas Standar" : "Sesuaikan Lebar Layar (Fit Width)"}
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setReadingMode(!readingMode)}
+              className={`p-1.5 rounded-md transition ${
+                readingMode ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title={readingMode ? "Keluar Mode Baca" : "Mode Baca Santai (Tanpa Gangguan)"}
+            >
+              {readingMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
           <button
             onClick={handleMarkVerifiedDone}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
@@ -325,6 +410,58 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
 
       {/* Main Review Area */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Left Outline Navigator Sidebar */}
+        {showOutline && sections.length > 0 && (
+          <div className="w-60 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-sm z-10 animate-slideRight">
+            <div className="p-4 flex-1 overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                <div className="flex items-center space-x-2 text-xs font-bold text-slate-700">
+                  <ListOrdered className="w-4 h-4 text-brand-600" />
+                  <span>Struktur Bab</span>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-400">{sections.length} Bagian</span>
+              </div>
+              <div className="space-y-1">
+                {sections.map((sec, idx) => {
+                  const secSentences = sec.paragraphs.flatMap((p) => p.sentences);
+                  const verified = secSentences.filter((s) => getSentenceStatus(s.uid) === 'terverifikasi').length;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleScrollToSection(idx)}
+                      className={`w-full text-left p-2 rounded-lg text-xs font-medium transition hover:bg-brand-50 hover:text-brand-800 ${
+                        sec.level === 1 ? 'font-bold text-slate-800' : 'pl-4 text-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="truncate flex-1">{sec.title || `Bab ${idx + 1}`}</span>
+                        {secSentences.length > 0 && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 shrink-0 ml-1">
+                            {verified}/{secSentences.length}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                {citations.references.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById('daftar-pustaka-heading');
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className="w-full text-left p-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-brand-50 hover:text-brand-800 transition"
+                  >
+                    DAFTAR PUSTAKA
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Document Paper Sheet (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-8 flex justify-center">
           {sections.length === 0 ? (
@@ -332,9 +469,18 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
               Belum ada hasil laporan untuk direview.<br />Silakan generate laporan terlebih dahulu di tab <strong>Buat Laporan</strong>.
             </div>
           ) : (
-            <div className="w-[820px] min-h-[1050px] bg-white paper-sheet rounded-xl p-16 font-serif text-slate-800 leading-relaxed shadow-lg border border-slate-200/60 my-4 select-text">
+            <div
+              style={{
+                width: fitWidth ? '100%' : `${Math.round(820 * (zoom / 100))}px`,
+                maxWidth: fitWidth ? '100%' : `${Math.round(820 * (zoom / 100))}px`,
+                fontSize: `${15 * (zoom / 100)}px`,
+              }}
+              className={`bg-white paper-sheet rounded-xl p-16 font-serif text-slate-800 leading-relaxed shadow-lg border border-slate-200/60 my-4 select-text transition-all duration-150 ${
+                fitWidth ? 'max-w-5xl' : ''
+              }`}
+            >
               {sections.map((section, secIdx) => (
-                <div key={secIdx} className="mb-8">
+                <div id={`section-heading-${secIdx}`} key={secIdx} className="mb-8 scroll-mt-6">
                   {/* Chapter/Subchapter Heading */}
                   <h3
                     className={`font-sans font-bold text-slate-900 mb-4 ${
@@ -394,7 +540,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
 
                   {/* Daftar Pustaka APA 7 render at the end */}
                   {secIdx === sections.length - 1 && citations.references.length > 0 && (
-                    <div className="mt-12 pt-8 border-t border-slate-200">
+                    <div id="daftar-pustaka-heading" className="mt-12 pt-8 border-t border-slate-200 scroll-mt-6">
                       <h4 className="font-sans font-bold text-center text-sm uppercase mb-4">
                         Daftar Pustaka
                       </h4>
@@ -412,7 +558,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
         </div>
 
         {/* Selected Sentence Inspector / Evidence Drawer (Right Side) */}
-        {selectedSentence && (
+        {selectedSentence && !readingMode && (
           <div className="w-96 bg-white border-l border-slate-200 flex flex-col justify-between shrink-0 shadow-lg z-20">
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -421,14 +567,14 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                     className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                       selectedStatus === 'terverifikasi'
                         ? 'bg-emerald-100 text-emerald-800'
-                        : selectedStatus === 'bukan_klaim'
+                        : selectedStatus === 'bukan_klaim' || selectedStatus === 'bukan_klaim_faktual'
                         ? 'bg-slate-100 text-slate-600'
                         : 'bg-rose-100 text-rose-800'
                     }`}
                   >
                     {selectedStatus === 'terverifikasi'
                       ? '✓ Terverifikasi Sumber'
-                      : selectedStatus === 'bukan_klaim'
+                      : selectedStatus === 'bukan_klaim' || selectedStatus === 'bukan_klaim_faktual'
                       ? '○ Bukan Klaim Faktual'
                       : '⚠ Belum Terverifikasi'}
                   </span>
@@ -459,7 +605,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                 />
                 <button
                   onClick={handleSaveEdit}
-                  className="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1"
+                  className="mt-2 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-sm shadow-blue-500/20"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>Simpan Perubahan Kalimat</span>

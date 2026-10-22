@@ -99,3 +99,110 @@ def test_api_bridge_connection_and_fetch_overrides(tmp_path: Path, monkeypatch):
 
     db.close()
 
+
+def test_api_bridge_bibliography_error_fallback(tmp_path: Path, monkeypatch):
+    from generator.ai import bibliography
+
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    def mock_extract_raises(text, cl):
+        raise bibliography.BibliographyError("Model hallucinated invalid JSON twice")
+
+    monkeypatch.setattr(bibliography, "extract_source", mock_extract_raises)
+
+    res = bridge.add_manual_source("Teks referensi penelitian tentang pertanian")
+    assert res.get("success") is True
+    assert res["record"]["title"] == "Teks Manual"
+    db.close()
+
+
+def test_api_bridge_export_report_none_template_id(tmp_path: Path):
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    # When no template exists, export_report should return error cleanly, not raise TypeError
+    res = bridge.export_report({"template_id": None, "sources": [], "sections": []})
+    assert "error" in res
+    assert "Template DOCX tidak ditemukan" in res["error"]
+    db.close()
+
+
+
+def test_api_bridge_multi_project_and_doi(tmp_path: Path, monkeypatch):
+    from generator.sources import doi_resolver
+    from generator import paths
+    paths.set_data_dir(tmp_path)
+
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    # 1. Test DOI resolution via bridge
+    def mock_fetch(doi):
+        return {"title": "Paper Biochar", "authors": [], "year": "2024", "kind": "doi"}
+
+    monkeypatch.setattr(doi_resolver, "fetch_doi_metadata", mock_fetch)
+    doi_res = bridge.resolve_doi_source("10.1016/j.demo.2024")
+    assert doi_res.get("success") is True
+    assert doi_res["record"]["title"] == "Paper Biochar"
+
+    # 2. Test multi-project save, list, load, delete
+    save_res = bridge.save_named_draft("Tugas Akhir AI", {
+        "fields": {"JUDUL": "Tugas Akhir AI"},
+        "sources": [{"title": "S1"}],
+        "sections": [],
+        "done": ["uid-1"]
+    })
+    assert save_res.get("success") is True
+    draft_id = save_res["draft_id"]
+
+    drafts_list = bridge.list_saved_drafts()
+    assert any(d["draft_id"] == draft_id for d in drafts_list)
+
+    load_res = bridge.load_named_draft(draft_id)
+    assert load_res.get("success") is True
+    assert load_res["draft"]["fields"]["JUDUL"] == "Tugas Akhir AI"
+
+    del_res = bridge.delete_named_draft(draft_id)
+    assert del_res.get("success") is True
+
+    db.close()
+
+def test_api_bridge_template_management(tmp_path: Path):
+    from generator import paths
+    paths.set_data_dir(tmp_path)
+
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    # 1. Create standard academic template with custom options
+    res = bridge.create_default_template({"font_name": "Times New Roman", "margin_preset": "4433"})
+    assert res.get("success") is True
+    tpl_path = Path(res["path"])
+    assert tpl_path.is_file()
+
+    # 2. List templates returns spec
+    tpls = bridge.list_templates()
+    assert len(tpls) >= 1
+    std_tpl = next(t for t in tpls if t["is_default"])
+    assert std_tpl["status"] == "lengkap"
+    assert std_tpl["spec"]["margin"] == "4-4-3-3 cm"
+    assert std_tpl["spec"]["font"] == "Times New Roman 12pt"
+
+    # 3. Open template folder
+    f_res = bridge.open_templates_folder()
+    assert f_res.get("success") is True
+
+    db.close()

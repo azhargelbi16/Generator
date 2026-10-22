@@ -13,9 +13,11 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { api, Profile, Dosen, MataKuliah, Logo } from '../lib/api';
+import { toast } from '../lib/toast';
 
 export const TabData: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'profil' | 'dosen' | 'matkul' | 'logo'>('profil');
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   // Profil state
   const [profile, setProfile] = useState<Profile>({ nama: '', nim: '', prodi: '' });
@@ -78,12 +80,17 @@ export const TabData: React.FC = () => {
     if (d) setDosenList(d);
   };
 
-  const handleDeleteDosen = async (id: number) => {
-    if (confirm('Hapus data dosen ini?')) {
-      await api.deleteDosen(id);
-      const d = await api.listDosen();
-      if (d) setDosenList(d);
-    }
+  const handleDeleteDosen = (id: number) => {
+    setConfirmDialog({
+      message: 'Apakah Anda yakin ingin menghapus data dosen ini?',
+      onConfirm: async () => {
+        await api.deleteDosen(id);
+        const d = await api.listDosen();
+        if (d) setDosenList(d);
+        setConfirmDialog(null);
+        toast.success('Data dosen berhasil dihapus.');
+      },
+    });
   };
 
   // Matkul handlers
@@ -101,12 +108,17 @@ export const TabData: React.FC = () => {
     if (m) setMatkulList(m);
   };
 
-  const handleDeleteMatkul = async (id: number) => {
-    if (confirm('Hapus mata kuliah ini?')) {
-      await api.deleteMatkul(id);
-      const m = await api.listMatkul();
-      if (m) setMatkulList(m);
-    }
+  const handleDeleteMatkul = (id: number) => {
+    setConfirmDialog({
+      message: 'Apakah Anda yakin ingin menghapus mata kuliah ini?',
+      onConfirm: async () => {
+        await api.deleteMatkul(id);
+        const m = await api.listMatkul();
+        if (m) setMatkulList(m);
+        setConfirmDialog(null);
+        toast.success('Mata kuliah berhasil dihapus.');
+      },
+    });
   };
 
   // Logo handlers
@@ -115,15 +127,21 @@ export const TabData: React.FC = () => {
     if (res?.success) {
       const l = await api.listLogos();
       if (l) setLogoList(l);
+      toast.success('Logo berhasil diunggah.');
     }
   };
 
-  const handleDeleteLogo = async (id: number) => {
-    if (confirm('Hapus logo ini?')) {
-      await api.deleteLogo(id);
-      const l = await api.listLogos();
-      if (l) setLogoList(l);
-    }
+  const handleDeleteLogo = (id: number) => {
+    setConfirmDialog({
+      message: 'Apakah Anda yakin ingin menghapus logo ini?',
+      onConfirm: async () => {
+        await api.deleteLogo(id);
+        const l = await api.listLogos();
+        if (l) setLogoList(l);
+        setConfirmDialog(null);
+        toast.success('Logo berhasil dihapus.');
+      },
+    });
   };
 
   return (
@@ -464,6 +482,32 @@ export const TabData: React.FC = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
+            <h3 className="text-sm font-bold text-slate-800 mb-2">Konfirmasi Tindakan</h3>
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">{confirmDialog.message}</p>
+            <div className="flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDialog.onConfirm}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -34,6 +34,13 @@ export interface Logo {
   exists: boolean;
 }
 
+export interface TemplateSpec {
+  paper: string;
+  margin: string;
+  font: string;
+  spacing: string;
+}
+
 export interface TemplateItem {
   id: number;
   nama: string;
@@ -44,6 +51,8 @@ export interface TemplateItem {
   not_standalone: string[];
   unknown: string[];
   placeholders: string[];
+  is_default?: boolean;
+  spec?: TemplateSpec;
 }
 
 export interface AppConfig {
@@ -96,7 +105,7 @@ export interface Section {
 export interface SentenceStatus {
   index: number;
   uid: string;
-  status: 'terverifikasi' | 'belum_terverifikasi' | 'bukan_klaim';
+  status: 'terverifikasi' | 'belum_terverifikasi' | 'bukan_klaim' | 'bukan_klaim_faktual';
   is_factual: boolean;
   source_ids: number[];
 }
@@ -107,6 +116,16 @@ export interface FormatVariant {
   description: string;
   skeleton: string[];
   outline_titles: string[];
+}
+
+export interface SavedDraftItem {
+  draft_id: string;
+  title: string;
+  sources_count: number;
+  sections_count: number;
+  sentence_count: number;
+  is_active: boolean;
+  mtime: number;
 }
 
 // Fallback helper for pywebview API
@@ -149,21 +168,29 @@ export const api = {
   listTemplates: () => callApi<TemplateItem[]>('list_templates'),
   uploadTemplate: () => callApi<{ success?: boolean; template?: any; cancelled?: boolean }>('upload_template'),
   deleteTemplate: (id: number) => callApi<{ success: boolean }>('delete_template', id),
-  createDefaultTemplate: () => callApi<{ success: boolean }>('create_default_template'),
+  createDefaultTemplate: (options?: { font_name?: string; margin_preset?: string; line_spacing?: number }) =>
+    callApi<{ success: boolean; path?: string; error?: string }>('create_default_template', options),
+  openTemplate: (id: number) => callApi<{ success: boolean; error?: string }>('open_template', id),
+  openTemplatesFolder: () => callApi<{ success: boolean; error?: string }>('open_templates_folder'),
 
   // Sources
   pickPdfSource: () => callApi<{ success?: boolean; record?: SourceRecord; error?: string; cancelled?: boolean }>('pick_pdf_source'),
   addWebSource: (url: string) => callApi<{ success?: boolean; record?: SourceRecord; error?: string }>('add_web_source', url),
   addManualSource: (text: string) => callApi<{ success?: boolean; record?: SourceRecord; error?: string }>('add_manual_source', text),
+  resolveDoiSource: (doi: string) => callApi<{ success?: boolean; record?: SourceRecord; error?: string }>('resolve_doi_source', doi),
 
   // Formats & Outlines
   getFormatVariants: () => callApi<FormatVariant[]>('get_format_variants'),
   suggestOutline: (topic: string, sources: SourceRecord[]) => callApi<{ success?: boolean; outline?: string[]; error?: string }>('suggest_outline', topic, sources),
 
-  // Drafts
+  // Drafts & Projects
   loadActiveDraft: () => callApi<{ has_draft: boolean; fields?: any; sources?: SourceRecord[]; sections?: Section[]; done?: string[] }>('load_active_draft'),
   saveActiveDraft: (state: any) => callApi<{ success: boolean }>('save_active_draft', state),
   clearActiveDraft: () => callApi<{ success: boolean }>('clear_active_draft'),
+  listSavedDrafts: () => callApi<SavedDraftItem[]>('list_saved_drafts'),
+  saveNamedDraft: (name: string, state: any) => callApi<{ success?: boolean; draft_id?: string; error?: string }>('save_named_draft', name, state),
+  loadNamedDraft: (draftId: string) => callApi<{ success?: boolean; draft?: any; error?: string }>('load_named_draft', draftId),
+  deleteNamedDraft: (draftId: string) => callApi<{ success?: boolean }>('delete_named_draft', draftId),
 
   // Generation
   startGeneration: (req: { topic: string; outline: string[]; sources: SourceRecord[]; variant: string }) =>

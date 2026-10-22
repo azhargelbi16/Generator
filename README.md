@@ -87,14 +87,15 @@ Aturan tambahan: daftar bernomor hanya untuk rumusan masalah, tujuan, kesimpulan
 1. **Data**: isi profil (nama, NIM, program studi), unggah logo, tambah dosen dan mata kuliah. Semuanya tersimpan di basis data lokal.
 2. **Template**: unggah template yang lolos validasi.
 3. **Buat Laporan**:
-   - Masukkan sumber: PDF (dibaca langsung, atau OCR bila hasil pindaian), tautan web, atau teks manual. Metadata boleh dikoreksi lewat formulir; aplikasi tidak pernah menebak pemisahan nama penulis.
+   - Masukkan sumber: PDF (dibaca langsung, atau OCR bila hasil pindaian), resolusi DOI resmi dari CrossRef, tautan web, atau teks manual. Metadata boleh dikoreksi lewat formulir; aplikasi tidak pernah menebak pemisahan nama penulis.
+   - Kelola banyak laporan secara simultan lewat tombol **Kelola Draf & Proyek**: simpan snapshot proyek, buka kembali laporan lama, atau mulai draf baru.
    - Tulis judul, lalu pilih **Format laporan** (A, B, C, atau Bebas). Format baku mengisi outline dengan struktur varian dan mengunci editornya; pilih **Bebas** bila ingin menyusun outline sendiri, lalu klik **Usulkan outline** dan sunting bila perlu.
    - Klik **Generate**. Setiap kalimat hasil AI membawa kutipan dari sumber dan diperiksa ulang secara lokal.
-   - Di tab **Review Hasil** dokumen tampil bersih seperti di Microsoft Word: huruf Times New Roman 12 poin, judul laporan dan judul bab lebih besar dan tebal, sitasi tertulis langsung di kalimatnya, mis. (Santoso, 2020). Tidak ada warna di badan dokumen; scroll bebas seperti membaca di Word.
-   - Klik satu kalimat: kalimat itu disorot lembut dan tepat di bawahnya muncul satu baris kecil berisi status berwarna serta tombol **Parafrase**, **Tandai selesai**, dan **Pulihkan sitasi**. Klik di luar kalimat untuk melepasnya.
-   - Untuk memperbaiki kalimat, klik kalimatnya lalu ketik langsung di tempatnya; bagian lain dokumen terkunci. Pindah klik ke kalimat lain atau ke area kosong untuk menyimpan perbaikan secara otomatis. Kalimat hasil suntingan Anda berstatus belum terverifikasi sampai Anda menandainya selesai. Jangan mengubah tulisan sitasi di dalam kurung; bila sitasi perlu dikembalikan, gunakan tombol **Pulihkan sitasi**.
-   - Penghitung kecil di atas dokumen menunjukkan berapa kalimat yang sudah selesai diverifikasi.
-   - Klik **Simpan DOCX**. Hasil tersimpan di folder `output\` dengan nama dari judul laporan. Draf otomatis terhapus setelah ekspor sukses.
+   - Di tab **Review Hasil** dokumen tampil di **Canvas Review Studio** bersih seperti di Microsoft Word: dilengkapi kontrol Zoom (75%–150%), Fit-Width, Mode Baca bebas gangguan, serta sidebar navigasi Struktur Bab untuk melompat langsung antar bab. Huruf Times New Roman 12 poin, judul laporan dan judul bab lebih besar dan tebal, sitasi tertulis langsung di kalimatnya, mis. (Santoso, 2020).
+   - Klik satu kalimat: kalimat itu disorot lembut dan panel inspektur sisi kanan menampilkan kutipan bukti asli dari teks sumber serta tombol **Parafrase AI**, **Tandai selesai**, dan **Pulihkan sitasi**.
+   - Untuk memperbaiki kalimat, klik kalimatnya lalu ketik langsung di tempatnya; bagian lain dokumen terkunci. Pindah klik ke kalimat lain atau ke area kosong untuk menyimpan perbaikan secara otomatis.
+   - Penghitung di atas dokumen menunjukkan berapa kalimat yang sudah selesai diverifikasi.
+   - Klik **Simpan DOCX**. Hasil tersimpan di folder `output\` dengan nama dari judul laporan dan otomatis dibuka di Microsoft Word. Draf pekerjaan Anda tetap tersimpan dengan aman sehingga dapat dibuka dan direvisi kembali kapan saja.
 
 ## Status kalimat dan gerbang ekspor
 
@@ -116,7 +117,7 @@ PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali
 
 ## Catatan teknis
 
-- Antarmuka ditulis dengan Qt (PySide6). GUI Tkinter lama resmi dipensiunkan pada 20 Oktober 2026 dan tidak lagi disertakan; kode lengkapnya tetap tersimpan di riwayat git (commit sebelum `chore: pensiunkan GUI Tkinter`) bila suatu saat perlu dibandingkan atau dipulihkan.
+- Antarmuka ditulis dengan Desktop Webview modern (React 19 + TypeScript + Tailwind CSS via pywebview). GUI Tkinter dan Qt lama resmi dipensiunkan; aplikasi berjalan mulus dan responsif di atas Microsoft Edge WebView2 bawaan Windows.
 
 - Operasi lama (OCR, panggilan AI, ambil web, render DOCX) berjalan di latar sehingga jendela tetap responsif.
 - Sumber panjang diproses per batch lalu digabung dan dideduplikasi; verifikasi kutipan tetap memakai teks lengkap. Pada PDF sangat panjang kualitas isi bisa menurun karena tiap batch menulis bab yang sama dari potongan berbeda.

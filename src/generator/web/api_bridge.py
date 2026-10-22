@@ -18,7 +18,7 @@ from ..ai import bibliography, content, citation, client, dosen
 from ..ai.citation import Source, Author
 from ..ai.client import AIClient, AIError
 from ..document import renderer, template, placeholders
-from ..sources import pdf_reader, web_reader
+from ..sources import pdf_reader, web_reader, doi_resolver
 from ..sources.records import (
     DRAFT_ACTIVE_ID,
     normalize_metadata,
@@ -226,71 +226,221 @@ class ApiBridge:
     # TEMPLATES
     # =========================================================================
 
+    def _create_academic_template_docx(self, dest_path: Path, options: dict[str, Any] | None = None) -> None:
+        from docx import Document
+        from docx.shared import Cm, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.style import WD_STYLE_TYPE
+
+        opts = options or {}
+        font_name = opts.get("font_name", "Times New Roman")
+        margin_preset = opts.get("margin_preset", "4433")
+        line_spacing = float(opts.get("line_spacing", 1.5))
+
+        doc = Document()
+
+        # 1. Dimensi Kertas A4 (21.0 x 29.7 cm) & Margin Baku
+        section = doc.sections[0]
+        section.page_width = Cm(21.0)
+        section.page_height = Cm(29.7)
+        if margin_preset == "4433":
+            # Standar Skripsi/Tesis Dikti: Kiri 4 cm, Atas 4 cm, Kanan 3 cm, Bawah 3 cm
+            section.top_margin = Cm(4.0)
+            section.left_margin = Cm(4.0)
+            section.right_margin = Cm(3.0)
+            section.bottom_margin = Cm(3.0)
+        else:
+            # Standar Makalah/Artikel Bebas: 3 cm sekeliling
+            section.top_margin = Cm(3.0)
+            section.left_margin = Cm(3.0)
+            section.right_margin = Cm(3.0)
+            section.bottom_margin = Cm(3.0)
+
+        # 2. Tipografi Baku
+        normal = doc.styles["Normal"]
+        normal.font.name = font_name
+        normal.font.size = Pt(12)
+        normal.font.color.rgb = RGBColor(0, 0, 0)
+        normal.paragraph_format.line_spacing = line_spacing
+        normal.paragraph_format.space_after = Pt(0)
+
+        if "Heading 1" in doc.styles:
+            h1 = doc.styles["Heading 1"]
+        else:
+            h1 = doc.styles.add_style("Heading 1", WD_STYLE_TYPE.PARAGRAPH)
+        h1.font.name = font_name
+        h1.font.size = Pt(14)
+        h1.font.bold = True
+        h1.font.color.rgb = RGBColor(0, 0, 0)
+        h1.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h1.paragraph_format.space_before = Pt(12)
+        h1.paragraph_format.space_after = Pt(6)
+        h1.paragraph_format.line_spacing = line_spacing
+
+        if "Heading 2" in doc.styles:
+            h2 = doc.styles["Heading 2"]
+        else:
+            h2 = doc.styles.add_style("Heading 2", WD_STYLE_TYPE.PARAGRAPH)
+        h2.font.name = font_name
+        h2.font.size = Pt(12)
+        h2.font.bold = True
+        h2.font.color.rgb = RGBColor(0, 0, 0)
+        h2.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        h2.paragraph_format.space_before = Pt(6)
+        h2.paragraph_format.space_after = Pt(4)
+        h2.paragraph_format.line_spacing = line_spacing
+
+        # 3. Halaman Sampul (Cover Page)
+        p_judul = doc.add_paragraph()
+        p_judul.paragraph_format.space_before = Cm(1.5)
+        p_judul.paragraph_format.space_after = Cm(1.0)
+        p_judul.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_judul = p_judul.add_run("{{JUDUL}}")
+        r_judul.bold = True
+        r_judul.font.name = font_name
+        r_judul.font.size = Pt(16)
+
+        p_jenis = doc.add_paragraph()
+        p_jenis.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_jenis.paragraph_format.space_after = Cm(1.5)
+        r_jenis = p_jenis.add_run("LAPORAN AKADEMIK")
+        r_jenis.bold = True
+        r_jenis.font.name = font_name
+        r_jenis.font.size = Pt(12)
+
+        p_logo = doc.add_paragraph("{{LOGO}}")
+        p_logo.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_logo.paragraph_format.space_after = Cm(2.0)
+
+        p_meta = doc.add_paragraph()
+        p_meta.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_meta.paragraph_format.line_spacing = 1.15
+
+        r_oleh = p_meta.add_run("Disusun Oleh:\n")
+        r_oleh.bold = True
+        r_oleh.font.name = font_name
+        r_oleh.font.size = Pt(12)
+
+        r_mhs = p_meta.add_run("Nama: {{NAMA}}\nNIM: {{NIM}}\n\n")
+        r_mhs.font.name = font_name
+        r_mhs.font.size = Pt(12)
+
+        r_dos_label = p_meta.add_run("Dosen Pembimbing:\n")
+        r_dos_label.bold = True
+        r_dos_label.font.name = font_name
+        r_dos_label.font.size = Pt(12)
+
+        r_dos = p_meta.add_run("{{DOSEN}}\n\n")
+        r_dos.font.name = font_name
+        r_dos.font.size = Pt(12)
+
+        r_mk = p_meta.add_run("Mata Kuliah: {{MATA_KULIAH}}\n")
+        r_mk.font.name = font_name
+        r_mk.font.size = Pt(12)
+
+        r_tgl = p_meta.add_run("{{TANGGAL}}")
+        r_tgl.font.name = font_name
+        r_tgl.font.size = Pt(12)
+
+        doc.add_page_break()
+
+        # 4. Halaman Daftar Isi
+        h_toc = doc.add_paragraph(style="Heading 1")
+        r_toc = h_toc.add_run("DAFTAR ISI")
+        r_toc.bold = True
+        h_toc.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        p_toc = doc.add_paragraph("{{DAFTAR_ISI}}")
+        p_toc.paragraph_format.space_before = Pt(12)
+
+        doc.add_page_break()
+
+        # 5. Halaman Isi Laporan
+        doc.add_paragraph("{{ISI_LAPORAN}}")
+
+        doc.add_page_break()
+
+        # 6. Halaman Daftar Pustaka
+        h_pus = doc.add_paragraph(style="Heading 1")
+        r_pus = h_pus.add_run("DAFTAR PUSTAKA")
+        r_pus.bold = True
+        h_pus.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        p_pus = doc.add_paragraph("{{DAFTAR_PUSTAKA}}")
+        p_pus.paragraph_format.space_before = Pt(12)
+
+        doc.save(dest_path)
+
     def _ensure_default_template(self) -> None:
         try:
             paths.TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
             dest_path = paths.TEMPLATES_DIR / "Template_Standar_Akademik.docx"
             if not dest_path.is_file():
-                from docx import Document
-                from docx.shared import Cm, Pt
-                doc = Document()
-
-                p_judul = doc.add_paragraph()
-                p_judul.paragraph_format.space_before = Cm(2)
-                p_judul.paragraph_format.space_after = Cm(1.5)
-                r_judul = p_judul.add_run("{{JUDUL}}")
-                r_judul.bold = True
-                r_judul.font.size = Pt(16)
-                p_judul.alignment = 1
-
-                p_logo = doc.add_paragraph("{{LOGO}}")
-                p_logo.alignment = 1
-                p_logo.paragraph_format.space_after = Cm(2)
-
-                p_meta = doc.add_paragraph()
-                p_meta.alignment = 1
-                p_meta.add_run("Disusun Oleh:\n").bold = True
-                p_meta.add_run("Nama: {{NAMA}}\nNIM: {{NIM}}\n\n")
-                p_meta.add_run("Dosen Pembimbing:\n").bold = True
-                p_meta.add_run("{{DOSEN}}\n\n")
-                p_meta.add_run("Mata Kuliah: {{MATA_KULIAH}}\n")
-                p_meta.add_run("{{TANGGAL}}")
-                doc.add_page_break()
-
-                h_toc = doc.add_paragraph()
-                r_toc = h_toc.add_run("DAFTAR ISI")
-                r_toc.bold = True
-                r_toc.font.size = Pt(14)
-                h_toc.alignment = 1
-                doc.add_paragraph("{{DAFTAR_ISI}}")
-                doc.add_page_break()
-
-                doc.add_paragraph("{{ISI_LAPORAN}}")
-                doc.add_page_break()
-
-                h_pus = doc.add_paragraph()
-                r_pus = h_pus.add_run("DAFTAR PUSTAKA")
-                r_pus.bold = True
-                r_pus.font.size = Pt(14)
-                h_pus.alignment = 1
-                doc.add_paragraph("{{DAFTAR_PUSTAKA}}")
-
-                doc.save(dest_path)
+                self._create_academic_template_docx(dest_path)
 
             all_tpls = self.db.list_template()
+            desc = "Template Word resmi baku (Margin 4-4-3-3 cm, Times New Roman 12pt, Cover, TOC, APA 7)"
             if not any(Path(t.path).resolve() == dest_path.resolve() for t in all_tpls):
                 self.db.add_template(database.Template(
                     0,
                     "Template Standar Akademik",
-                    "Template Word resmi lengkap cover, logo, TOC, dan daftar pustaka",
+                    desc,
                     str(dest_path)
                 ))
         except Exception as e:
             log.warning(f"Gagal memastikan template default: {e}")
 
-    def create_default_template(self) -> dict[str, Any]:
-        self._ensure_default_template()
+    def create_default_template(self, options: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            paths.TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+            dest_path = paths.TEMPLATES_DIR / "Template_Standar_Akademik.docx"
+            self._create_academic_template_docx(dest_path, options)
+
+            all_tpls = self.db.list_template()
+            existing = next((t for t in all_tpls if Path(t.path).resolve() == dest_path.resolve()), None)
+            desc = "Template Word resmi baku (Margin 4-4-3-3 cm, Times New Roman 12pt, Cover, TOC, APA 7)"
+            if existing:
+                self.db.update_template(database.Template(
+                    existing.id,
+                    "Template Standar Akademik",
+                    desc,
+                    str(dest_path)
+                ))
+            else:
+                self.db.add_template(database.Template(
+                    0,
+                    "Template Standar Akademik",
+                    desc,
+                    str(dest_path)
+                ))
+            return {"success": True, "path": str(dest_path)}
+        except Exception as e:
+            log.exception("Gagal membuat template standar")
+            return {"success": False, "error": str(e)}
+
+    def open_template(self, template_id: int) -> dict[str, Any]:
+        tpl = next((t for t in self.db.list_template() if t.id == int(template_id)), None)
+        if not tpl:
+            return {"success": False, "error": "Template tidak ditemukan"}
+        p = Path(tpl.path)
+        if not p.is_file():
+            return {"success": False, "error": f"Berkas tidak ditemukan: {p}"}
+        if os.name == "nt":
+            try:
+                os.startfile(str(p.resolve()))
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": f"Gagal membuka aplikasi Word: {e}"}
         return {"success": True}
+
+    def open_templates_folder(self) -> dict[str, Any]:
+        try:
+            paths.TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(str(paths.TEMPLATES_DIR.resolve()))
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": f"Gagal membuka folder template: {e}"}
 
     def list_templates(self) -> list[dict[str, Any]]:
         templates = self.db.list_template()
@@ -318,6 +468,7 @@ class ApiBridge:
                 except Exception as e:
                     status = f"rusak: {e}"
 
+            is_default = "Template_Standar_Akademik" in str(p.name) or "Standar" in t.nama
             results.append({
                 "id": t.id,
                 "nama": t.nama,
@@ -328,6 +479,13 @@ class ApiBridge:
                 "not_standalone": not_standalone,
                 "unknown": unknown,
                 "placeholders": placeholders_list,
+                "is_default": is_default,
+                "spec": {
+                    "paper": "A4",
+                    "margin": "4-4-3-3 cm" if is_default else "Sesuai File",
+                    "font": "Times New Roman 12pt" if is_default else "Sesuai File",
+                    "spacing": "1.5" if is_default else "Sesuai File",
+                },
             })
         return results
 
@@ -348,7 +506,14 @@ class ApiBridge:
             counter += 1
 
         shutil.copy2(src_path, dest_path)
-        val_result = template.validate_template(dest_path)
+        try:
+            val_result = template.validate_template(dest_path)
+        except template.TemplateError as exc:
+            try:
+                dest_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return {"error": f"Berkas template tidak valid atau rusak: {exc}"}
         tpl_id = self.db.add_template(database.Template(0, src_path.stem, "Diimpor pengguna", str(dest_path)))
 
         return {
@@ -397,7 +562,7 @@ class ApiBridge:
         cl = AIClient(self._cfg)
         try:
             source = bibliography.extract_source(text, cl)
-        except AIError:
+        except (AIError, bibliography.BibliographyError):
             source = Source([], "", "")
 
         merged = bibliography.merge_metadata(source, doc_meta)
@@ -420,7 +585,7 @@ class ApiBridge:
         cl = AIClient(self._cfg)
         try:
             source = bibliography.extract_source(text, cl)
-        except AIError:
+        except (AIError, bibliography.BibliographyError):
             source = Source([], "", "")
 
         merged = bibliography.merge_metadata(source, meta)
@@ -435,12 +600,22 @@ class ApiBridge:
         cl = AIClient(self._cfg)
         try:
             source = bibliography.extract_source(text, cl)
-        except AIError:
+        except (AIError, bibliography.BibliographyError):
             source = Source([], "", "Teks Manual")
 
         merged = bibliography.merge_metadata(source, {})
         record = source_to_record(merged, text, "manual")
         return {"success": True, "record": record}
+
+    def resolve_doi_source(self, doi: str) -> dict[str, Any]:
+        doi = doi.strip()
+        if not doi:
+            return {"error": "DOI tidak boleh kosong."}
+        try:
+            record = doi_resolver.fetch_doi_metadata(doi)
+            return {"success": True, "record": record}
+        except Exception as e:
+            return {"error": f"Gagal mengambil metadata DOI: {e}"}
 
     # =========================================================================
     # FORMATS & OUTLINES
@@ -513,6 +688,74 @@ class ApiBridge:
 
     def clear_active_draft(self) -> dict[str, Any]:
         drafts.delete_draft(DRAFT_ACTIVE_ID)
+        return {"success": True}
+
+    def list_saved_drafts(self) -> list[dict[str, Any]]:
+        draft_ids = drafts.list_drafts()
+        results = []
+        for d_id in draft_ids:
+            st = drafts.load_draft(d_id)
+            if not st:
+                continue
+            title = st.fields.get("JUDUL", "Tanpa Judul") if st.fields else "Tanpa Judul"
+            sentence_count = sum(len(p.get("sentences", [])) for sec in st.sections for p in sec.get("paragraphs", []))
+            try:
+                p = paths.DRAFTS_DIR / f"{d_id}.json"
+                mtime = p.stat().st_mtime
+            except Exception:
+                mtime = 0
+            results.append({
+                "draft_id": d_id,
+                "title": title or "Tanpa Judul",
+                "sources_count": len(st.sources),
+                "sections_count": len(st.sections),
+                "sentence_count": sentence_count,
+                "is_active": d_id == DRAFT_ACTIVE_ID,
+                "mtime": mtime,
+            })
+        results.sort(key=lambda x: (not x["is_active"], -x["mtime"]))
+        return results
+
+    def save_named_draft(self, name: str, state: dict[str, Any]) -> dict[str, Any]:
+        slug = report.sanitize_filename(name, max_len=40)
+        if not slug or slug == "laporan":
+            slug = f"laporan_{report.sanitize_filename(state.get('fields', {}).get('JUDUL', 'proyek'), max_len=20)}"
+        draft_state = drafts.DraftState(
+            draft_id=slug,
+            fields=state.get("fields", {}),
+            sources=state.get("sources", []),
+            sections=state.get("sections", []),
+            done=list(state.get("done", [])),
+        )
+        drafts.save_draft(draft_state)
+        return {"success": True, "draft_id": slug}
+
+    def load_named_draft(self, draft_id: str) -> dict[str, Any]:
+        st = drafts.load_draft(draft_id)
+        if not st:
+            return {"error": "Draf tidak ditemukan."}
+        active_copy = drafts.DraftState(
+            draft_id=DRAFT_ACTIVE_ID,
+            fields=st.fields,
+            sources=st.sources,
+            sections=st.sections,
+            done=st.done,
+        )
+        drafts.save_draft(active_copy)
+        return {
+            "success": True,
+            "draft": {
+                "has_draft": True,
+                "draft_id": st.draft_id,
+                "fields": st.fields,
+                "sources": st.sources,
+                "sections": st.sections,
+                "done": list(st.done),
+            }
+        }
+
+    def delete_named_draft(self, draft_id: str) -> dict[str, Any]:
+        drafts.delete_draft(draft_id)
         return {"success": True}
 
     # =========================================================================
@@ -731,7 +974,15 @@ class ApiBridge:
         style = state.get("style", self._cfg.citation_style)
 
         tpls = self.db.list_template()
-        tpl = next((t for t in tpls if t.id == int(template_id)), None)
+        tpl_id_int: int | None = None
+        if template_id is not None:
+            try:
+                tpl_id_int = int(template_id)
+            except (ValueError, TypeError):
+                tpl_id_int = None
+        if tpl_id_int is None and tpls:
+            tpl_id_int = tpls[0].id
+        tpl = next((t for t in tpls if t.id == tpl_id_int), None)
         if not tpl or not Path(tpl.path).is_file():
             return {"error": "Template DOCX tidak ditemukan."}
 
@@ -764,8 +1015,8 @@ class ApiBridge:
                 update_fields=True,
                 label_forms=label_forms,
             )
-            # Remove active draft on successful export
-            drafts.delete_draft(DRAFT_ACTIVE_ID)
+            # Simpan draf (jangan dihapus agar dapat dibuka & direvisi kembali)
+            # drafts.delete_draft(DRAFT_ACTIVE_ID)
 
             if open_word and os.name == "nt":
                 try:

@@ -14,6 +14,7 @@ import {
   Search
 } from 'lucide-react';
 import { api, AppConfig } from '../lib/api';
+import { toast } from '../lib/toast';
 
 interface TabSettingsProps {
   onConfigSaved: () => void;
@@ -65,8 +66,8 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved }) => {
         setTimeout(() => setSaveSuccess(false), 3000);
         onConfigSaved();
       }
-    } catch (e) {
-      alert('Gagal menyimpan konfigurasi: ' + e);
+    } catch (e: any) {
+      toast.error('Gagal menyimpan konfigurasi: ' + (e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -97,10 +98,10 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved }) => {
           setConfig((prev) => ({ ...prev, ai_model: res.models[0] }));
         }
       } else {
-        alert(res?.error || 'Tidak ada model ditemukan dari endpoint.');
+        toast.error(res?.error || 'Tidak ada model ditemukan dari endpoint.');
       }
     } catch (e: any) {
-      alert('Gagal mengambil daftar model: ' + e.message);
+      toast.error('Gagal mengambil daftar model: ' + e.message);
     } finally {
       setFetchingModels(false);
     }
