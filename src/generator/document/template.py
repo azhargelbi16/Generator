@@ -61,7 +61,11 @@ def load_template(path: Path):
 
 def validate_template(path: Path) -> ValidationResult:
     """Periksa penanda wajib, penanda khusus yang tidak berdiri sendiri, dan tak dikenal."""
-    document = load_template(path)
+    return validate_document(load_template(path))
+
+
+def validate_document(document) -> ValidationResult:
+    """Validasi isi dokumen yang sudah dibuka (dipakai juga oleh renderer)."""
     present = placeholders.collect_names(document)
     present_set = set(present)
 

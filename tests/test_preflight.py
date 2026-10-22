@@ -62,3 +62,44 @@ def test_tanpa_temuan_find_issues_kosong(tmp_path):
     logo = tmp_path / "logo.png"
     logo.write_bytes(b"png")
     assert find_issues("Laporan Pertanian", sources, statuses, {0}, logo, style="dkk") == []
+
+
+def test_pemeriksaan_menghormati_kalimat_yang_ditandai_selesai(tmp_path):
+    sources = [Source([Author("Santoso", "Budi")], "2020", "Judul", "Jurnal")]
+    sections = [Section(1, "Bab", [Paragraph([Sentence("Klaim.", "tidak ada", [0])])])]
+    statuses = verify_sections(sections, {0: GOOD_QUOTE})
+    done = frozenset({statuses[0].sentence.uid})
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"png")
+
+    checks = run_checks("Laporan Pertanian", sources, statuses, {0}, logo, done=done)
+    assert checks[0].ok is True, checks[0].detail
+    assert find_issues("Laporan Pertanian", sources, statuses, {0}, logo, done=done) == []
+
+
+def test_cek_konsistensi_menemukan_sitasi_di_luar_daftar_sumber():
+    sources = [Source([Author("Santoso", "Budi")], "2020", "Judul", "Jurnal")]
+    sections = [Section(1, "Bab", [Paragraph([Sentence("Klaim.", GOOD_QUOTE, [7])])])]
+    statuses = verify_sections(sections, {7: GOOD_QUOTE})
+    checks = run_checks("Laporan Pertanian", sources, statuses, {7}, None)
+    konsistensi = checks[1]
+    assert konsistensi.ok is False
+    assert "di luar" in konsistensi.detail
+
+
+def test_cek_konsistensi_menemukan_entri_tanpa_penulis_dan_judul():
+    sources = [Source([], "", "")]
+    sections = [Section(1, "Bab", [Paragraph([Sentence("Klaim.", GOOD_QUOTE, [0])])])]
+    statuses = verify_sections(sections, {0: GOOD_QUOTE})
+    checks = run_checks("Laporan Pertanian", sources, statuses, {0}, None)
+    assert checks[1].ok is False
+    assert "tanpa penulis" in checks[1].detail
+
+
+def test_cek_konsistensi_menemukan_entri_tanpa_judul():
+    sources = [Source([Author("Santoso", "Budi")], "2020", "")]
+    sections = [Section(1, "Bab", [Paragraph([Sentence("Klaim.", GOOD_QUOTE, [0])])])]
+    statuses = verify_sections(sections, {0: GOOD_QUOTE})
+    checks = run_checks("Laporan Pertanian", sources, statuses, {0}, None)
+    assert checks[1].ok is False
+    assert "tanpa judul" in checks[1].detail

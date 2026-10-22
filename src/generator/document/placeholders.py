@@ -5,7 +5,16 @@ from __future__ import annotations
 import re
 from typing import Iterator
 
+from docx.oxml.ns import qn
+from docx.text.run import Run
+
 PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}")
+_XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def clean_text(text: str) -> str:
+    """Buang karakter kontrol yang ditolak XML (NULL, 0x0B, 0x0C, dan sejenisnya)."""
+    return _XML_ILLEGAL.sub("", text)
 
 
 def find_names(text: str) -> list[str]:
@@ -13,22 +22,34 @@ def find_names(text: str) -> list[str]:
     return [match.group(0) for match in PLACEHOLDER_RE.finditer(text)]
 
 
-def iter_paragraphs(document) -> Iterator:
-    """Semua paragraf: badan dokumen, sel tabel, header, dan footer (9.2).
-
-    Text box dan shape tidak didukung dan dicatat di README (Task 18).
-    """
-    for paragraph in document.paragraphs:
+def _paragraphs_in(container) -> Iterator:
+    for paragraph in container.paragraphs:
         yield paragraph
-    for table in document.tables:
+    for table in container.tables:
         for row in table.rows:
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
                     yield paragraph
+
+
+def iter_paragraphs(document) -> Iterator:
+    """Semua paragraf: badan dokumen, sel tabel, header, dan footer (9.2).
+
+    Header/footer yang berbeda untuk halaman pertama dan halaman genap ikut
+    dipindai; tanpa itu penanda di dalamnya lolos validasi lalu tercetak mentah.
+    Text box dan shape tidak didukung dan dicatat di README (Task 18).
+    """
+    yield from _paragraphs_in(document)
     for section in document.sections:
-        for container in (section.header, section.footer):
-            for paragraph in container.paragraphs:
-                yield paragraph
+        for container in (
+            section.header,
+            section.first_page_header,
+            section.even_page_header,
+            section.footer,
+            section.first_page_footer,
+            section.even_page_footer,
+        ):
+            yield from _paragraphs_in(container)
 
 
 def collect_names(document) -> list[str]:
@@ -86,7 +107,7 @@ def replace_in_paragraph(paragraph, mapping: dict[str, str]) -> list[str]:
     Mengembalikan nama penanda yang benar-benar tergantikan, berurutan dari kiri
     ke kanan. Penanda yang tidak ada di `mapping` dibiarkan apa adanya.
     """
-    runs = paragraph.runs
+    runs = all_runs(paragraph)
     if not runs:
         return []
     combined = "".join(run.text for run in runs)
@@ -95,7 +116,13 @@ def replace_in_paragraph(paragraph, mapping: dict[str, str]) -> list[str]:
         return []
     replaced: list[str] = []
     for match in reversed(matches):
-        _replace_span(runs, _run_bounds(runs), match.start(), match.end(), mapping[match.group(0)])
+        _replace_span(
+            runs,
+            _run_bounds(runs),
+            match.start(),
+            match.end(),
+            clean_text(str(mapping[match.group(0)])),
+        )
         replaced.append(match.group(0))
     replaced.reverse()
     return replaced
@@ -104,3 +131,12 @@ def replace_in_paragraph(paragraph, mapping: dict[str, str]) -> list[str]:
 def is_standalone(paragraph, name: str) -> bool:
     """True bila paragraf hanya berisi satu penanda tanpa teks lain (9.4)."""
     return paragraph.text.strip() == name
+
+
+def all_runs(paragraph) -> list[Run]:
+    """Semua run di paragraf, termasuk yang berada di dalam hyperlink.
+
+    `paragraph.runs` hanya mengembalikan run anak langsung; penanda di dalam
+    hyperlink karenanya terlihat oleh validasi tetapi tidak pernah terganti.
+    """
+    return [Run(element, paragraph) for element in paragraph._p.iter(qn("w:r"))]

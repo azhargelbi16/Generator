@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from ..sources.chunking import chunk_text
 from ..textutil import repair_mojibake
+from .. import format_spec
 from . import prompts
 from .client import StreamError
 
@@ -60,6 +61,19 @@ def _normalize(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _pairs_combine_duplicates(pairs):
+    res = {}
+    for k, v in pairs:
+        if k in res:
+            if isinstance(res[k], list) and isinstance(v, list):
+                res[k].extend(v)
+            else:
+                res[k] = v
+        else:
+            res[k] = v
+    return res
+
+
 def _first_json_object(reply) -> dict | None:
     if not isinstance(reply, str):
         return None
@@ -68,7 +82,7 @@ def _first_json_object(reply) -> dict | None:
     if start == -1 or end <= start:
         return None
     try:
-        data = json.loads(reply[start : end + 1])
+        data = json.loads(reply[start : end + 1], object_pairs_hook=_pairs_combine_duplicates)
     except ValueError:
         return None
     return data if isinstance(data, dict) else None
@@ -316,17 +330,29 @@ def generate_sections(
     max_prompt_chars: int = 12000,
     progress: GenerationProgress | None = None,
     cancel=None,
+    variant: str | None = None,
 ) -> list[Section]:
     """Tulis isi laporan per batch chunk; satu panggilan AI per batch (12.3).
 
     Tanpa `progress` dan `cancel`, keluarannya sama persis dengan perilaku lama.
     Dengan `progress`, kalimat dilaporkan saat lahir (streaming bila client
     mendukung `chat_stream`, selain itu per batch setelah jawaban utuh tiba).
+    Bila `variant` diisi (A/B/C), judul baku varian dipakai dan keluaran
+    dinormalisasi ke struktur varian.
     """
     if not source_texts:
         raise ValueError("Teks sumber kosong; tidak ada dasar untuk menulis isi.")
     if len(sources) != len(source_texts):
         raise ValueError("Jumlah sumber dan teks sumber tidak cocok; indeks sumber tidak dapat dipercaya.")
+
+    variant_spec = format_spec.get_variant(variant)
+    if variant_spec is not None:
+        outline = format_spec.outline_titles(variant_spec)
+
+    def _finish(result: list[Section]) -> list[Section]:
+        if variant_spec is not None:
+            return format_spec.normalize_sections(variant_spec, result)
+        return _order_by_outline(result, outline)
 
     chunk_refs: list[tuple[int, str]] = []
     for source_id, text in enumerate(source_texts):
@@ -347,7 +373,10 @@ def generate_sections(
         total += 1
         if progress is not None:
             progress.batch_started(number, len(batches))
-        messages = prompts.content_prompt(topic, outline, sources, batch)
+        messages = prompts.content_prompt(
+            topic, outline, sources, batch,
+            variant=variant_spec.code if variant_spec is not None else None,
+        )
         data = None
         collected: list[tuple[str, Sentence]] = []
         use_stream = progress is not None and hasattr(client, "chat_stream")
@@ -372,14 +401,14 @@ def generate_sections(
     if progress is not None:
         progress.finished(cancelled)
     if cancelled:
-        return _order_by_outline(sections, outline)
+        return _finish(sections)
     if total and gagal == total:
         raise ValueError("Respons AI tidak terbaca (JSON tidak valid) pada semua batch.")
     if gagal:
         _logger.warning(
             "Generate: %d dari %d batch AI tidak terbaca; bab bisa kurang.", gagal, total
         )
-    return _order_by_outline(sections, outline)
+    return _finish(sections)
 
 
 def _insert_before_final_punctuation(text: str, citation: str) -> str:

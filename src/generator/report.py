@@ -25,51 +25,90 @@ _BULAN_INDONESIA = (
 )
 
 
-def format_tanggal(d: date) -> str:
+def format_tanggal(d: date | None = None) -> str:
     """Tanggal dalam bahasa Indonesia, mis. 18 Oktober 2026 (18.5)."""
+    if d is None:
+        d = date.today()
     return f"{d.day} {_BULAN_INDONESIA[d.month - 1]} {d.year}"
 
 
 _ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*]')
+_CONTROL_FILENAME = re.compile(r"[\x00-\x1f\x7f]")
 _UNDERSCORE_RUN = re.compile(r"_+")
+_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
 
 
 def sanitize_filename(judul: str, max_len: int = 80) -> str:
-    """Nama berkas aman untuk Windows: tanpa karakter ilegal, titik diganti
-    garis bawah ("4.0" -> "4_0"), spasi digarisbawahi, rapatkan garis bawah,
-    potong `max_len`, fallback "laporan" bila kosong."""
-    text = _ILLEGAL_FILENAME.sub("", judul)
+    """Nama berkas aman untuk Windows: tanpa karakter ilegal atau kontrol, titik
+    diganti garis bawah ("4.0" -> "4_0"), spasi digarisbawahi, rapatkan garis
+    bawah, potong `max_len`, fallback "laporan" bila kosong."""
+    text = _CONTROL_FILENAME.sub("", judul)
+    text = _ILLEGAL_FILENAME.sub("", text)
     text = text.replace(".", "_")
     text = "_".join(text.split())
     text = _UNDERSCORE_RUN.sub("_", text).strip("_")
-    return text[:max_len] or "laporan"
+    text = text[:max_len] or "laporan"
+    if text.upper() in _RESERVED_NAMES:
+        text += "_"
+    return text
+
+
+def _extract_str(obj, key: str) -> str:
+    if isinstance(obj, dict):
+        return str(obj.get(key, "") or "").strip()
+    if hasattr(obj, key):
+        return str(getattr(obj, key, "") or "").strip()
+    return str(obj or "").strip()
 
 
 def build_fields(
     judul: str,
-    profile: dict,
-    dosen: str,
-    mata_kuliah: str,
-    tanggal: date,
+    profile,
+    dosen,
+    mata_kuliah,
+    tanggal: date | str | None = None,
 ) -> dict[str, str]:
     """Isi penanda wajib; penanda opsional hanya bila nilainya tidak kosong (18.5).
 
     Penanda yang tidak disertakan akan dikosongkan oleh renderer, sehingga tidak
     pernah ada penanda mentah tercetak di dokumen hasil.
     """
+    if tanggal is None:
+        tanggal = date.today()
+
+    if isinstance(tanggal, str):
+        tanggal_str = tanggal
+        year_str = str(date.today().year)
+    else:
+        tanggal_str = format_tanggal(tanggal)
+        year_str = str(tanggal.year)
+
+    dosen_str = ""
+    if hasattr(dosen, "nama"):
+        gelar = getattr(dosen, "gelar", "")
+        dosen_str = f"{dosen.nama}, {gelar}" if gelar else str(dosen.nama)
+    elif dosen:
+        dosen_str = str(dosen)
+
+    matkul_str = getattr(mata_kuliah, "nama", str(mata_kuliah or ""))
+
     fields = {
-        "{{JUDUL}}": judul.strip(),
-        "{{NAMA}}": str(profile.get("nama", "")).strip(),
-        "{{NIM}}": str(profile.get("nim", "")).strip(),
-        "{{DOSEN}}": dosen.strip(),
-        "{{MATA_KULIAH}}": mata_kuliah.strip(),
-        "{{TANGGAL}}": format_tanggal(tanggal),
+        "{{JUDUL}}": str(judul or "").strip(),
+        "{{NAMA}}": _extract_str(profile, "nama"),
+        "{{NIM}}": _extract_str(profile, "nim"),
+        "{{DOSEN}}": dosen_str.strip(),
+        "{{MATA_KULIAH}}": matkul_str.strip(),
+        "{{TANGGAL}}": tanggal_str,
     }
-    prodi = str(profile.get("prodi", "")).strip()
+    prodi = _extract_str(profile, "prodi")
     if prodi:
         fields["{{PRODI}}"] = prodi
-    if tanggal.year:
-        fields["{{TAHUN}}"] = str(tanggal.year)
+    if year_str:
+        fields["{{TAHUN}}"] = year_str
     return fields
 
 
@@ -122,6 +161,20 @@ def labels_for(sources: list[Source], cited: set[int], style: str = "et_al") -> 
     """Peta indeks sumber asli ke sitasi dalam kurung; urutan kunci ikut urutan referensi."""
     return {
         labeled.source_index: labeled.in_text
+        for labeled in order_and_label(sources, cite=cited, style=style)
+    }
+
+
+def label_forms_for(
+    sources: list[Source], cited: set[int], style: str = "et_al"
+) -> dict[int, tuple[str, str]]:
+    """Peta indeks sumber ke (bentuk panjang, bentuk pendek).
+
+    Bentuk panjang dipakai pada kemunculan pertama (mis. singkatan organisasi),
+    bentuk pendek untuk kemunculan berikutnya (APA 7, 8.21).
+    """
+    return {
+        labeled.source_index: (labeled.in_text, labeled.in_text_short)
         for labeled in order_and_label(sources, cite=cited, style=style)
     }
 

@@ -34,6 +34,7 @@ class LabeledSource:
     suffix: str
     in_text: str
     reference: str
+    in_text_short: str = ""
 
 
 def initials(given: str) -> str:
@@ -104,6 +105,7 @@ def _author_part(
     first_use: bool,
     family_with: Sequence[Source],
     style: str = "et_al",
+    disambiguate: bool = False,
 ) -> str:
     authors = source.authors
     if not authors:
@@ -114,17 +116,23 @@ def _author_part(
             if first_use and author.abbrev:
                 return f"{author.family} [{author.abbrev}]"
             return author.abbrev or author.family
+        if disambiguate and author.given:
+            return f"{initials(author.given)} {author.family}"
         return author.family
 
     families = _families(source)
+    shown = families
+    if disambiguate and authors[0].given and not authors[0].is_org:
+        # APA 7 (8.19): inisial penulis pertama membedakan nama keluarga yang sama.
+        shown = [f"{initials(authors[0].given)} {families[0]}", *families[1:]]
     if _has_collision(source, family_with):
         depth = _expansion_depth(source, family_with)
         if depth >= len(families):
-            return _join_names(families)
-        return ", ".join(families[:depth]) + f", {_et_al_marker(style)}"
+            return _join_names(shown)
+        return ", ".join(shown[:depth]) + f", {_et_al_marker(style)}"
     if len(families) == 2:
-        return f"{families[0]} & {families[1]}"
-    return f"{families[0]} {_et_al_marker(style)}"
+        return f"{shown[0]} & {shown[1]}"
+    return f"{shown[0]} {_et_al_marker(style)}"
 
 
 def in_text(
@@ -134,9 +142,10 @@ def in_text(
     family_with: Sequence[Source] = (),
     suffix: str = "",
     style: str = "et_al",
+    disambiguate: bool = False,
 ) -> str:
     year = source.year or "n.d."
-    return f"({_author_part(source, first_use, family_with, style)}, {year}{suffix})"
+    return f"({_author_part(source, first_use, family_with, style, disambiguate)}, {year}{suffix})"
 
 
 def _format_author(author: Author) -> str:
@@ -185,6 +194,24 @@ def reference(source: Source, *, suffix: str = "") -> str:
     return " ".join(segments)
 
 
+def _needs_initials(source: Source, others: Sequence[Source]) -> bool:
+    """True bila penulis pertama berbeda inisial dengan keluarga yang sama (APA 8.19)."""
+    if not source.authors:
+        return False
+    first = source.authors[0]
+    if first.is_org or not first.given:
+        return False
+    for other in others:
+        if other is source or not other.authors:
+            continue
+        other_first = other.authors[0]
+        if other_first.is_org:
+            continue
+        if other_first.family == first.family and other_first.given != first.given:
+            return True
+    return False
+
+
 def order_and_label(
     sources: Sequence[Source], cite: set[int] | None = None, style: str = "et_al"
 ) -> list[LabeledSource]:
@@ -213,12 +240,28 @@ def order_and_label(
     labels: list[LabeledSource] = []
     for i, source in indexed:
         suffix = suffix_map.get(i, "")
+        disambiguate = _needs_initials(source, remaining)
         labels.append(
             LabeledSource(
                 source=source,
                 source_index=i,
                 suffix=suffix,
-                in_text=in_text(source, first_use=True, family_with=remaining, suffix=suffix, style=style),
+                in_text=in_text(
+                    source,
+                    first_use=True,
+                    family_with=remaining,
+                    suffix=suffix,
+                    style=style,
+                    disambiguate=disambiguate,
+                ),
+                in_text_short=in_text(
+                    source,
+                    first_use=False,
+                    family_with=remaining,
+                    suffix=suffix,
+                    style=style,
+                    disambiguate=disambiguate,
+                ),
                 reference=reference(source, suffix=suffix),
             )
         )

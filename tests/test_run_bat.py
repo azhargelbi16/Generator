@@ -6,5 +6,5 @@ def test_run_bat_bootstraps_and_launches():
     assert "python" in txt
     assert "venv" in txt
     assert "requirements.txt" in txt
-    assert "generator.qt.app" in txt
+    assert "generator.web.app" in txt
     assert "ocr" in txt or "onnx" in txt  # pesan progres dependensi besar (16)

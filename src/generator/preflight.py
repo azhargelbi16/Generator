@@ -57,6 +57,48 @@ def _logo_ok(logo_path: Path | None) -> bool:
     return logo_path is not None and Path(logo_path).is_file()
 
 
+def _citation_problems(
+    sources: list[Source],
+    statuses: list[SentenceStatus],
+    cited: set[int],
+) -> list[str]:
+    """Masalah nyata antara sitasi di teks dan entri daftar pustaka."""
+    problems: list[str] = []
+    out_of_range = sorted(
+        {
+            source_id
+            for item in statuses
+            if item.sentence.is_factual and item.sentence.citation
+            for source_id in item.sentence.source_ids
+            if not 0 <= source_id < len(sources)
+        }
+    )
+    if out_of_range:
+        problems.append(
+            "sitasi menunjuk sumber di luar daftar: " + ", ".join(map(str, out_of_range))
+        )
+    valid_cited = [index for index in sorted(cited) if 0 <= index < len(sources)]
+    tanpa_penulis = [
+        index for index in valid_cited if not sources[index].authors and not sources[index].title
+    ]
+    if tanpa_penulis:
+        problems.append(
+            "entri pustaka tanpa penulis dan judul: sumber "
+            + ", ".join(str(index + 1) for index in tanpa_penulis)
+        )
+    tanpa_judul = [
+        index
+        for index in valid_cited
+        if sources[index].title.strip() == "" and index not in tanpa_penulis
+    ]
+    if tanpa_judul:
+        problems.append(
+            "entri pustaka tanpa judul: sumber "
+            + ", ".join(str(index + 1) for index in tanpa_judul)
+        )
+    return problems
+
+
 def run_checks(
     judul: str,
     sources: list[Source],
@@ -64,19 +106,21 @@ def run_checks(
     cited: set[int],
     logo_path: Path | None,
     style: str = "et_al",
+    done: frozenset[str] = frozenset(),
 ) -> list[Check]:
     """Baris status pemeriksaan akhir; selalu berisi keenam baris."""
-    export_ok, export_msg = can_export(statuses)
+    export_ok, export_msg = can_export(statuses, done)
     labels = labels_for(sources, cited, style=style)
     references = references_for(sources, cited)
     mojibake = _mojibake_names(sources)
     safe_name = sanitize_filename(judul)
+    problems = _citation_problems(sources, statuses, cited)
     return [
         Check("Kalimat tertunda", export_ok, export_msg),
         Check(
             "Sitasi & pustaka konsisten",
-            True,
-            f"{len(labels)} sitasi · {len(references)} entri pustaka",
+            not problems,
+            "; ".join(problems) or f"{len(labels)} sitasi · {len(references)} entri pustaka",
         ),
         Check("Nama berkas", not _filename_needs_fix(judul), safe_name),
         Check("Nama penulis", not mojibake, "; ".join(mojibake)),
@@ -92,10 +136,11 @@ def find_issues(
     cited: set[int],
     logo_path: Path | None,
     style: str = "et_al",
+    done: frozenset[str] = frozenset(),
 ) -> list[PreflightIssue]:
     """Temuan yang memicu dialog Pemeriksaan Akhir; kosong berarti ekspor langsung."""
     issues: list[PreflightIssue] = []
-    tertunda = pending(statuses, frozenset())
+    tertunda = pending(statuses, done)
     if tertunda:
         issues.append(PreflightIssue("pending", f"Masih ada {len(tertunda)} kalimat tertunda."))
     mojibake = _mojibake_names(sources)

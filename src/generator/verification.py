@@ -47,7 +47,15 @@ class SentenceStatus:
     status: str
 
 
-def verify_sentence(sentence: Sentence, source_texts: dict[int, str], min_words: int = MIN_WORDS) -> str:
+def _get_source_text(source_texts: dict[int, str] | list[str], source_id: int) -> str:
+    if isinstance(source_texts, dict):
+        return source_texts.get(source_id, "")
+    if isinstance(source_texts, (list, tuple)) and 0 <= source_id < len(source_texts):
+        return source_texts[source_id] or ""
+    return ""
+
+
+def verify_sentence(sentence: Sentence, source_texts: dict[int, str] | list[str], min_words: int = MIN_WORDS) -> str:
     """Cek cuplikan kalimat terhadap teks sumber yang dirujuknya, tanpa AI."""
     if not sentence.is_factual:
         return STATUS_NON_FACTUAL
@@ -57,7 +65,7 @@ def verify_sentence(sentence: Sentence, source_texts: dict[int, str], min_words:
     if not quote or len(quote.split()) < min_words or not sentence.source_ids:
         return STATUS_UNVERIFIED
     for source_id in sentence.source_ids:
-        if quote in normalize(source_texts.get(source_id, "")):
+        if quote in normalize(_get_source_text(source_texts, source_id)):
             return STATUS_VERIFIED
     return STATUS_UNVERIFIED
 

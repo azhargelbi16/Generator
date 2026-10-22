@@ -5,3 +5,5 @@ __pycache__/
 .pytest_cache/
 .superpowers/
 output/
+scratch/
+frontend/node_modules/

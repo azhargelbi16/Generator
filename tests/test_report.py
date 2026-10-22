@@ -143,3 +143,17 @@ def test_sanitize_filename_kosong_jadi_laporan():
     assert sanitize_filename("") == "laporan"
     assert sanitize_filename("   ...") == "laporan"
 
+
+def test_sanitize_filename_buang_karakter_kontrol():
+    from generator.report import sanitize_filename
+
+    assert sanitize_filename("judul\x00kontrol\x1f") == "judulkontrol"
+
+
+def test_sanitize_filename_nama_reserved_windows_diberi_akhiran():
+    from generator.report import sanitize_filename
+
+    assert sanitize_filename("CON") == "CON_"
+    assert sanitize_filename("lpt1") == "lpt1_"
+    assert sanitize_filename("Laporan CON") == "Laporan_CON"
+

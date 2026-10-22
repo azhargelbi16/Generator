@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 
+from .. import format_spec
+
 _JSON_SHAPE = (
     '{"authors":[{"family":"","given":"","is_org":false,"abbrev":""}],'
     '"year":"","title":"","container":"","doi":"","url":""}'
@@ -43,11 +45,13 @@ def content_prompt(
     outline: list[str],
     sources: list,
     chunk_refs: list[tuple[int, str]],
+    variant: str | None = None,
 ) -> list[dict]:
     """Instruksi penulisan isi; tiap chunk diberi label `[sumber <id>]`.
 
     Kalimat dikembalikan sebagai objek terpisah supaya kode tidak perlu memecah
     kalimat sendiri dan tidak salah pecah pada singkatan seperti "dkk." atau "Dr.".
+    Bila `variant` diisi, struktur baku varian menjadi instruksi wajib.
     """
     system = (
         "Anda menulis isi laporan akademik berbahasa Indonesia berdasarkan teks sumber yang diberikan. "
@@ -57,8 +61,11 @@ def content_prompt(
         "quote diambil harfiah dari teks sumber sebagai bukti. "
         "source_ids hanya berisi indeks sumber yang ditandai pada label [sumber <id>] yang benar-benar mendasari kalimat. "
         "is_factual bernilai false untuk kalimat yang bukan klaim faktual, misalnya kalimat pengantar atau transisi. "
-        f"Balas hanya dengan JSON berbentuk {_CONTENT_SHAPE}, dengan satu bab per judul di outline."
+        f"Balas hanya dengan JSON berbentuk {_CONTENT_SHAPE}, dengan satu bab per judul di outline. PENTING: Semua bab harus berada di dalam SATU array sections tunggal tanpa mengulang kunci sections."
     )
+    variant_spec = format_spec.get_variant(variant)
+    if variant_spec is not None:
+        system += "\n\n" + format_spec.format_block(variant_spec)
     source_lines = []
     for index, source in enumerate(sources):
         authors = ", ".join(author.family for author in source.authors) or "(tanpa penulis)"

@@ -10,7 +10,7 @@ Aplikasi desktop untuk menyusun laporan akademik berbahasa Indonesia dari sumber
 
 ```
 .venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python -m generator.qt.app
+.venv\Scripts\python -m generator.web.app
 ```
 
 ## Mengatur layanan AI (tab Pengaturan)
@@ -61,13 +61,34 @@ Aturan penting:
 - Template tanpa style Heading tetap menghasilkan DOCX; judul bab memakai format tebal sebagai gantinya.
 - `{{DAFTAR_ISI}}` menjadi field TOC Word. Setelah dokumen terbuka di Word, klik kanan di daftar isi lalu pilih **Update Field** untuk mengisi nomor halaman.
 
+## Format baku isi laporan
+
+Pemetaan penanda di atas mengikuti spesifikasi format laporan fakultas. Bagian yang digenerate AI hanya isi di dalam `{{ISI_LAPORAN}}` (Bab 1 sampai Bab 4); margin, font, sampul, dan daftar isi tetap diatur berkas `.docx`.
+
+Pilih **Format laporan** di halaman Buat Laporan:
+
+| Varian | Dipakai untuk | Bab 2 | Bab 4 | Rumusan Masalah |
+| --- | --- | --- | --- | --- |
+| A | Responsi/tinjauan, beberapa objek bahasan | Tinjauan Pustaka | PENUTUP | Ada |
+| B | Laporan ringkas, satu objek bahasan (default) | Tinjauan Pustaka | KESIMPULAN DAN SARAN | Ada |
+| C | Laporan praktikum | Metodologi | PENUTUP | Tidak ada |
+| Bebas | Outline manual seperti versi lama | Bebas | Bebas | Bebas |
+
+Saat varian dipilih, aplikasi melakukan tiga hal:
+
+1. Struktur varian dan aturan penulisan baku dikirim ke prompt sebagai instruksi wajib (bukan saran).
+2. Judul dinamis `{Subjek}`, `{Objek}`, `{Aspek}` diisi AI, sedangkan nomor dan judul tetap (`BAB 1. PENDAHULUAN`, `1.1 Latar Belakang`, dan seterusnya) ditetapkan aplikasi.
+3. Keluaran AI dinormalisasi sebelum ditampilkan: urutan bab dikembalikan sesuai varian, penomoran `BAB n.`/`n.n`/`n.n.n` dihitung ulang, bagian tetap yang kosong tetap muncul sebagai judul untuk diisi, dan bagian opsional tanpa isi dihapus. Isi tambahan dari AI tidak dibuang; ia menjadi subbab tambahan bernomor di akhir babnya.
+
+Aturan tambahan: daftar bernomor hanya untuk rumusan masalah, tujuan, kesimpulan, saran, alat/bahan, dan langkah kerja; satu butir ditulis sebagai satu paragraf. Tabel, gambar, dan foto tidak dibuat AI, melainkan ditandai `[TABEL: ...]`, `[GAMBAR: ...]`, atau `[FOTO: ...]` untuk Anda isi. Kesimpulan harus sejajar dengan tujuan, dan setiap klaim faktual tetap harus bersitasi dari sumber.
+
 ## Alur pemakaian
 
 1. **Data**: isi profil (nama, NIM, program studi), unggah logo, tambah dosen dan mata kuliah. Semuanya tersimpan di basis data lokal.
 2. **Template**: unggah template yang lolos validasi.
 3. **Buat Laporan**:
    - Masukkan sumber: PDF (dibaca langsung, atau OCR bila hasil pindaian), tautan web, atau teks manual. Metadata boleh dikoreksi lewat formulir; aplikasi tidak pernah menebak pemisahan nama penulis.
-   - Tulis judul, klik **Usulkan outline**, sunting bila perlu.
+   - Tulis judul, lalu pilih **Format laporan** (A, B, C, atau Bebas). Format baku mengisi outline dengan struktur varian dan mengunci editornya; pilih **Bebas** bila ingin menyusun outline sendiri, lalu klik **Usulkan outline** dan sunting bila perlu.
    - Klik **Generate**. Setiap kalimat hasil AI membawa kutipan dari sumber dan diperiksa ulang secara lokal.
    - Di tab **Review Hasil** dokumen tampil bersih seperti di Microsoft Word: huruf Times New Roman 12 poin, judul laporan dan judul bab lebih besar dan tebal, sitasi tertulis langsung di kalimatnya, mis. (Santoso, 2020). Tidak ada warna di badan dokumen; scroll bebas seperti membaca di Word.
    - Klik satu kalimat: kalimat itu disorot lembut dan tepat di bawahnya muncul satu baris kecil berisi status berwarna serta tombol **Parafrase**, **Tandai selesai**, dan **Pulihkan sitasi**. Klik di luar kalimat untuk melepasnya.
@@ -100,8 +121,9 @@ PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali
 - Operasi lama (OCR, panggilan AI, ambil web, render DOCX) berjalan di latar sehingga jendela tetap responsif.
 - Sumber panjang diproses per batch lalu digabung dan dideduplikasi; verifikasi kutipan tetap memakai teks lengkap. Pada PDF sangat panjang kualitas isi bisa menurun karena tiap batch menulis bab yang sama dari potongan berbeda.
 - Aplikasi memutuskan `is_factual` berdasarkan jawaban AI, sehingga Anda tetap penjaga terakhir: kalimat faktual yang salah tercatat bukan-klaim bisa lolos bila Anda menandai selesai tanpa membacanya.
-- Batasan sitasi organisasi: versi ini menampilkan `Nama Penuh [Singkatan]` di semua kemunculan, belum beralih ke singkatan saja setelah sitasi pertama.
-- Draf tersimpan otomatis di `data\drafts\` sehingga pekerjaan tidak hilang saat aplikasi ditutup.
+- Batasan sitasi organisasi: bentuk panjang `Nama Penuh [Singkatan]` dipakai pada kemunculan pertama, lalu bentuk singkat pada kemunculan berikutnya di DOCX. Halaman Review tetap menampilkan bentuk panjang agar mudah diperiksa.
+- Draf tersimpan otomatis di `data\drafts\` sehingga pekerjaan tidak hilang saat aplikasi ditutup. Berkas draf memuat teks sumber utuh dalam JSON polos (tidak dienkripsi) dan baru dihapus setelah ekspor sukses; hapus manual bila laporan batal diekspor.
+- Teks dari web dan PDF diperlakukan sebagai data, bukan instruksi. Aplikasi hanya meminta kutipan dan metadata, tetapi prompt injection dari halaman/sumber tetap mungkin; periksa hasil sebelum diekspor.
 
 ## Struktur folder
 

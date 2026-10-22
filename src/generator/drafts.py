@@ -10,10 +10,19 @@ dibangun ulang persis saat draf dimuat kembali.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from . import paths
+from .atomic import write_text as write_text_atomic
+
+_DRAFT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+_RESERVED_NAMES = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
 
 
 @dataclass
@@ -26,16 +35,15 @@ class DraftState:
 
 
 def _path(draft_id: str) -> Path:
+    if not _DRAFT_ID.fullmatch(draft_id) or draft_id.split(".")[0].upper() in _RESERVED_NAMES:
+        raise ValueError(f"draft_id tidak aman: {draft_id!r}")
     return paths.DRAFTS_DIR / f"{draft_id}.json"
 
 
 def save_draft(state: DraftState) -> Path:
     paths.ensure_dirs()
     path = _path(state.draft_id)
-    path.write_text(
-        json.dumps(asdict(state), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_text_atomic(path, json.dumps(asdict(state), ensure_ascii=False, indent=2))
     return path
 
 

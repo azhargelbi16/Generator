@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from docx.enum.style import WD_STYLE_TYPE
@@ -20,7 +22,7 @@ _log = get_logger("renderer")
 TOC_FIELD_XML = (
     f"<w:p {nsdecls('w')}>"
     '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
-    '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>'
+    '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-9" \\h \\z \\u </w:instrText></w:r>'
     '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
     "<w:r><w:t>Klik kanan di sini lalu pilih Update Field untuk memperbarui daftar isi.</w:t></w:r>"
     '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
@@ -54,7 +56,7 @@ def _insert_paragraph_before(anchor: DocxParagraph, text: str = "", style: str |
     if style:
         paragraph.style = style
     if text:
-        paragraph.add_run(text)
+        paragraph.add_run(placeholders.clean_text(text))
     return paragraph
 
 
@@ -69,11 +71,15 @@ def _clear_runs(paragraph: DocxParagraph) -> None:
 
 
 def _logo_size(logo_path: Path) -> tuple[Emu, Emu]:
-    """Skala agar masuk kotak 5x5 cm tanpa memotong, rasio asli terjaga."""
-    from PIL import Image
+    """Skala agar masuk kotak 5x5 cm tanpa memotong, rasio asli terjaga.
+
+    Orientasi EXIF diterapkan lebih dulu: foto ponsel sering tersimpan miring
+    dan Word memakai dimensi setelah rotasi.
+    """
+    from PIL import Image, ImageOps
 
     with Image.open(logo_path) as image:
-        width, height = image.size
+        width, height = ImageOps.exif_transpose(image).size
     if width <= 0 or height <= 0:
         raise ValueError("ukuran gambar tidak valid")
     scale = min(_LOGO_BOX / width, _LOGO_BOX / height)
@@ -109,10 +115,16 @@ def _enable_update_fields(doc) -> None:
         return
     element = OxmlElement("w:updateFields")
     element.set(qn("w:val"), "true")
-    settings.append(element)
+    # Skema OOXML menuntut updateFields sebelum compat/rsids; Word mengabaikannya bila urutannya salah.
+    compat = settings.find(qn("w:compat"))
+    if compat is not None:
+        compat.addprevious(element)
+    else:
+        settings.append(element)
 
 
-def _place_body(doc, paragraph: DocxParagraph, sections, labels) -> None:
+def _place_body(doc, paragraph: DocxParagraph, sections, labels, label_forms=None) -> None:
+    defined: set[int] = set()
     for section in sections:
         heading_style = _heading_style(doc, section.level)
         heading = _insert_paragraph_before(paragraph, section.title, heading_style)
@@ -120,9 +132,20 @@ def _place_body(doc, paragraph: DocxParagraph, sections, labels) -> None:
             for run in heading.runs:
                 run.bold = True
         for block in section.paragraphs:
-            text = content.compose(block, labels)
+            block_labels = labels
+            if label_forms:
+                # Kemunculan pertama memakai bentuk panjang, berikutnya bentuk pendek.
+                block_labels = {
+                    index: (pendek if index in defined else panjang)
+                    for index, (panjang, pendek) in label_forms.items()
+                }
+            text = content.compose(block, block_labels)
             if text:
                 _insert_paragraph_before(paragraph, text, "Normal")
+            if label_forms:
+                for sentence in block.sentences:
+                    if sentence.is_factual and sentence.citation:
+                        defined.update(sentence.source_ids)
     _remove_paragraph(paragraph)
 
 
@@ -143,8 +166,19 @@ def render_report(
     output_path: Path,
     labels: dict[int, str] | None = None,
     update_fields: bool = False,
+    label_forms: dict[int, tuple[str, str]] | None = None,
 ) -> Path:
     doc = template.load_template(template_path)
+    result = template.validate_document(doc)
+    if not result.is_processable:
+        detail: list[str] = []
+        if result.missing:
+            detail.append("penanda wajib tidak ada: " + ", ".join(result.missing))
+        if result.not_standalone:
+            detail.append(
+                "penanda khusus harus berdiri sendiri: " + ", ".join(result.not_standalone)
+            )
+        raise template.TemplateError("Template tidak siap: " + "; ".join(detail))
     labels = labels or {}
     if update_fields:
         _enable_update_fields(doc)
@@ -152,9 +186,9 @@ def render_report(
     mapping = {key: value for key, value in fields.items() if key not in template.SPECIAL_PLACEHOLDERS}
     for name in template.OPTIONAL_PLACEHOLDERS:
         mapping.setdefault(name, "")
-    for paragraph in list(placeholders.iter_paragraphs(doc)):
-        placeholders.replace_in_paragraph(paragraph, mapping)
 
+    # Penanda khusus diproses lebih dulu: nilai field bisa memuat teks yang
+    # kebetulan sama dengan nama penanda khusus (mis. judul "{{ISI_LAPORAN}}").
     for paragraph in list(placeholders.iter_paragraphs(doc)):
         text = paragraph.text.strip()
         if text == "{{LOGO}}":
@@ -162,7 +196,7 @@ def render_report(
         elif text == "{{DAFTAR_ISI}}":
             _place_toc(paragraph)
         elif text == "{{ISI_LAPORAN}}":
-            _place_body(doc, paragraph, sections, labels)
+            _place_body(doc, paragraph, sections, labels, label_forms)
         elif text == "{{DAFTAR_PUSTAKA}}":
             _place_references(paragraph, references)
 
@@ -170,5 +204,27 @@ def render_report(
     for paragraph in list(placeholders.iter_paragraphs(doc)):
         placeholders.replace_in_paragraph(paragraph, leftover)
 
-    doc.save(output_path)
+    for paragraph in list(placeholders.iter_paragraphs(doc)):
+        placeholders.replace_in_paragraph(paragraph, mapping)
+
+    _save_atomic(doc, output_path)
     return output_path
+
+
+def _save_atomic(doc, output_path: Path) -> None:
+    """Simpan DOCX lewat berkas sementara; berkas lama tidak tersentuh bila gagal."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{output_path.name}.", suffix=".docx", dir=output_path.parent
+    )
+    os.close(descriptor)
+    try:
+        doc.save(temporary)
+        os.replace(temporary, output_path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise

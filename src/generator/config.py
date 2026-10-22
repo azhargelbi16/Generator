@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .atomic import write_text as write_text_atomic
+
 DEFAULT_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -67,8 +69,4 @@ def load_config(path: Path) -> Config:
 
 def save_config(cfg: Config, path: Path) -> None:
     path = Path(path)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    path.write_text(json.dumps(asdict(cfg), indent=2, ensure_ascii=False), encoding="utf-8")
+    write_text_atomic(path, json.dumps(asdict(cfg), indent=2, ensure_ascii=False))

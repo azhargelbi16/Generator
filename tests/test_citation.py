@@ -102,6 +102,27 @@ def test_gaya_dkk_untuk_satu_dua_dan_tiga_penulis():
     assert in_text(three) == "(Saleh et al., 2023)"
 
 
+def test_labeled_source_menyediakan_bentuk_pendek_organisasi():
+    org = S([A("Kementerian Pertanian", is_org=True, abbrev="Kementan")])
+    (labeled,) = order_and_label([org], cite={0})
+    assert labeled.in_text == "(Kementerian Pertanian [Kementan], 2020)"
+    assert labeled.in_text_short == "(Kementan, 2020)"
+
+
+def test_keluarga_sama_inisial_beda_memakai_inisial_di_teks():
+    sources = [S([A("Santoso", "Budi")], "2020"), S([A("Santoso", "Ani")], "2021")]
+    labels = {item.source_index: item.in_text for item in order_and_label(sources, cite={0, 1})}
+    assert labels[0] == "(B. Santoso, 2020)"
+    assert labels[1] == "(A. Santoso, 2021)"
+
+
+def test_keluarga_sama_inisial_sama_tetap_tanpa_inisial_dan_berbedsufiks():
+    sources = [S([A("Santoso", "Budi")], "2020"), S([A("Santoso", "Budi")], "2020")]
+    labels = {item.source_index: item.in_text for item in order_and_label(sources, cite={0, 1})}
+    assert labels[0] == "(Santoso, 2020a)"
+    assert labels[1] == "(Santoso, 2020b)"
+
+
 def test_gaya_dkk_organisasi_dan_sufiks_tetap():
     org = S([A("Kementerian Pertanian", is_org=True, abbrev="Kementan")])
     assert in_text(org, style="dkk") == "(Kementerian Pertanian [Kementan], 2020)"

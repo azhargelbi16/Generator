@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from generator import config
 
 
@@ -75,5 +77,23 @@ def test_roundtrip_dosen_review_true(tmp_path):
     cfg = config.Config("http://localhost:1234/v1", "k", "m", 0.2, dosen_review=True)
     config.save_config(cfg, p)
     assert config.load_config(p).dosen_review is True
+
+
+def test_save_gagal_tidak_merusak_config_lama(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    p = tmp_path / "config.json"
+    config.save_config(config.Config("http://x/v1", "kunci-lama", "m", 0.2), p)
+
+    def rusak(self, *args, **kwargs):
+        with open(self, "w", encoding="utf-8") as handle:
+            handle.write("{rusak")
+        raise OSError("disk penuh")
+
+    monkeypatch.setattr(Path, "write_text", rusak)
+    with pytest.raises(OSError):
+        config.save_config(config.Config("http://x/v1", "kunci-baru", "m", 0.2), p)
+    assert config.load_config(p).ai_api_key == "kunci-lama"
+    assert list(tmp_path.iterdir()) == [p]
 
 
