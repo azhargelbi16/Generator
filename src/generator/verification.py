@@ -11,14 +11,22 @@ dash/kutip tipografis, dan membuang soft hyphen.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from .ai.content import Section, Sentence
 
 STATUS_VERIFIED = "terverifikasi"
+STATUS_NEEDS_REVIEW = "perlu_ditinjau"
 STATUS_UNVERIFIED = "tidak_terverifikasi"
 STATUS_NON_FACTUAL = "bukan_klaim_faktual"
 MIN_WORDS = 8
+
+REASON_NEEDS_REVIEW = "Kutipan ada, kalimatnya tidak sepenuhnya didukung sumber."
+
+STOPWORDS_ID = frozenset({
+    "yang", "dan", "di", "ke", "dari", "untuk", "dengan", "pada", "adalah", "ini", "itu", "tidak"
+})
 
 _TYPOGRAPHY = str.maketrans(
     {
@@ -40,11 +48,26 @@ def normalize(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def compute_claim_support_score(sentence_text: str, window_text: str) -> float:
+    """Hitung rasio kata kalimat (tanpa kata fungsi Indonesia) yang muncul di jendela teks sumber."""
+    norm_sent = normalize(sentence_text)
+    words = [w for w in re.findall(r"\w+", norm_sent) if w not in STOPWORDS_ID]
+    if not words:
+        words = re.findall(r"\w+", norm_sent)
+    if not words:
+        return 0.0
+
+    window_words = set(re.findall(r"\w+", window_text))
+    matched = sum(1 for w in words if w in window_words)
+    return matched / len(words)
+
+
 @dataclass
 class SentenceStatus:
     index: int
     sentence: Sentence
     status: str
+    reason: str = ""
 
 
 def _get_source_text(source_texts: dict[int, str] | list[str], source_id: int) -> str:
@@ -78,14 +101,31 @@ def verify_sentence(
     quote = normalize(sentence.quote)
     if not quote or len(quote.split()) < min_words or not sentence.source_ids:
         return STATUS_UNVERIFIED
+
+    found_windows: list[str] = []
     for source_id in sentence.source_ids:
         if normalized_sources is not None and source_id in normalized_sources:
             src_norm = normalized_sources[source_id]
         else:
             src_norm = normalize(_get_source_text(source_texts, source_id))
-        if quote in src_norm:
-            return STATUS_VERIFIED
-    return STATUS_UNVERIFIED
+
+        start = 0
+        while True:
+            pos = src_norm.find(quote, start)
+            if pos == -1:
+                break
+            w_start = max(0, pos - 400)
+            w_end = min(len(src_norm), pos + len(quote) + 400)
+            found_windows.append(src_norm[w_start:w_end])
+            start = pos + 1
+
+    if not found_windows:
+        return STATUS_UNVERIFIED
+
+    best_score = max(compute_claim_support_score(sentence.text, w) for w in found_windows)
+    if best_score >= 0.6:
+        return STATUS_VERIFIED
+    return STATUS_NEEDS_REVIEW
 
 
 def verify_sections(sections: list[Section], source_texts: dict[int, str] | list[str]) -> list[SentenceStatus]:
@@ -95,11 +135,14 @@ def verify_sections(sections: list[Section], source_texts: dict[int, str] | list
     for section in sections:
         for paragraph in section.paragraphs:
             for sentence in paragraph.sentences:
+                st = verify_sentence(sentence, source_texts, normalized_sources=cached)
+                reason = REASON_NEEDS_REVIEW if st == STATUS_NEEDS_REVIEW else ""
                 statuses.append(
                     SentenceStatus(
                         index=len(statuses),
                         sentence=sentence,
-                        status=verify_sentence(sentence, source_texts, normalized_sources=cached),
+                        status=st,
+                        reason=reason,
                     )
                 )
     return statuses

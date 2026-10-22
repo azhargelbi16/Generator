@@ -25,7 +25,7 @@ from ..sources.records import (
     record_to_source,
     source_to_record,
 )
-from ..verification import verify_sections, STATUS_VERIFIED, STATUS_UNVERIFIED, STATUS_NON_FACTUAL
+from ..verification import verify_sections, STATUS_VERIFIED, STATUS_NEEDS_REVIEW, STATUS_UNVERIFIED, STATUS_NON_FACTUAL
 
 log = logging.getLogger("generator.web.api")
 
@@ -824,6 +824,7 @@ class ApiBridge:
                         "index": st.index,
                         "uid": st.sentence.uid,
                         "status": st.status,
+                        "reason": getattr(st, "reason", ""),
                         "is_factual": st.sentence.is_factual,
                         "source_ids": st.sentence.source_ids,
                     }
@@ -859,6 +860,7 @@ class ApiBridge:
                 "index": st.index,
                 "uid": st.sentence.uid,
                 "status": st.status,
+                "reason": getattr(st, "reason", ""),
                 "is_factual": st.sentence.is_factual,
                 "source_ids": st.sentence.source_ids,
             }

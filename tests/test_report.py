@@ -17,13 +17,13 @@ def test_can_export_blocks_when_unverified():
 
 
 def test_can_export_allows_when_verified():
-    s = Section(1, "B", [Paragraph([Sentence("x", GOOD, [0])])])
+    s = Section(1, "B", [Paragraph([Sentence(GOOD, GOOD, [0])])])
     st = verify_sections([s], {0: GOOD})
     assert can_export(st) == (True, "")
 
 
 def test_pending_excludes_verified_sentences():
-    s = Section(1, "B", [Paragraph([Sentence("x", GOOD, [0]),
+    s = Section(1, "B", [Paragraph([Sentence(GOOD, GOOD, [0]),
                                     Sentence("y", "kata kata kata kata kata kata kata kata", [0])])])
     st = verify_sections([s], {0: GOOD})
     assert st[0].status == STATUS_VERIFIED
@@ -50,22 +50,22 @@ def test_done_keyed_by_stable_uid_survives_insertion():
 
 def test_non_factual_uids_for_bulk_mark():
     s = Section(1, "B", [Paragraph([Sentence("pengantar.", is_factual=False),
-                                    Sentence("klaim.", GOOD, [0])])])
+                                    Sentence(GOOD, GOOD, [0])])])
     st = verify_sections([s], {0: GOOD})
     assert non_factual_uids(st) == [st[0].sentence.uid]
     assert can_export(st, done=frozenset(non_factual_uids(st)))[0] is True
 
 
 def test_cited_ids_collects_referenced_sources():
-    s = Section(1, "B", [Paragraph([Sentence("x", GOOD, [0, 1]),
+    s = Section(1, "B", [Paragraph([Sentence(GOOD, GOOD, [0, 1]),
                                     Sentence("y", is_factual=False)])])
     st = verify_sections([s], {0: GOOD})
     assert cited_ids(st) == {0, 1}
 
 
 def test_cited_ids_ignores_citation_suppressed():
-    s = Section(1, "B", [Paragraph([Sentence("x", GOOD, [0], citation=False),
-                                    Sentence("y", GOOD, [1])])])
+    s = Section(1, "B", [Paragraph([Sentence(GOOD, GOOD, [0], citation=False),
+                                    Sentence(GOOD, GOOD, [1])])])
     st = verify_sections([s], {0: GOOD, 1: GOOD})
     assert cited_ids(st) == {1}
 
@@ -156,4 +156,3 @@ def test_sanitize_filename_nama_reserved_windows_diberi_akhiran():
     assert sanitize_filename("CON") == "CON_"
     assert sanitize_filename("lpt1") == "lpt1_"
     assert sanitize_filename("Laporan CON") == "Laporan_CON"
-

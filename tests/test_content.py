@@ -256,7 +256,7 @@ STREAM_JSON = json.dumps({
             "title": "Pendahuluan",
             "paragraphs": [{"sentences": [
                 {
-                    "text": "Satu.",
+                    "text": "Pertanian organik meningkat pesat di berbagai daerah tropis.",
                     "quote": "Pertanian organik meningkat pesat di berbagai daerah tropis",
                     "source_ids": [0],
                     "is_factual": True,
@@ -291,7 +291,12 @@ def test_streaming_melahirkan_kalimat_berurutan_dan_tahan_json_patah():
         "tema", ["Pendahuluan", "Metode"], sources, STREAM_TEXTS, client,
         max_prompt_chars=12000, progress=progress,
     )
-    assert [text for text, _ in progress.born] == ["Satu.", "Dua.", "Tiga.", "Empat."]
+    assert [text for text, _ in progress.born] == [
+        "Pertanian organik meningkat pesat di berbagai daerah tropis.",
+        "Dua.",
+        "Tiga.",
+        "Empat.",
+    ]
     assert progress.born[0][1] == "terverifikasi"
     assert progress.born[1][1] == "bukan_klaim_faktual"
     assert progress.finished_flags == [False]
@@ -344,4 +349,3 @@ def test_fallback_tanpa_chat_stream_reveal_per_batch_tanpa_duplikat():
     assert len(set(texts)) == len(texts)
     assert progress.finished_flags == [False]
     assert _serialize(sections) == ANCHOR_SECTIONS
-
