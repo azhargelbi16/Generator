@@ -7,6 +7,8 @@ Ambang pencocokan: **kecocokan = substring eksak setelah normalisasi** — tidak
 ada fuzzy matching. Normalisasi menyamakan huruf besar/kecil, merapikan spasi,
 menyambung kata yang terpotong tanda hubung di akhir baris, menyeragamkan
 dash/kutip tipografis, dan membuang soft hyphen.
+Toleransi teks (T1.2): membandingkan juga setelah membuang karakter non-alfanumerik
+agar typo tanda baca dan pemisah ribuan tidak menggagalkan verifikasi.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ STATUS_VERIFIED = "terverifikasi"
 STATUS_NEEDS_REVIEW = "perlu_ditinjau"
 STATUS_UNVERIFIED = "tidak_terverifikasi"
 STATUS_NON_FACTUAL = "bukan_klaim_faktual"
-MIN_WORDS = 8
+MIN_WORDS = 5
 
 REASON_NEEDS_REVIEW = "Kutipan ada, kalimatnya tidak sepenuhnya didukung sumber."
 
@@ -102,22 +104,49 @@ def verify_sentence(
     if not quote or len(quote.split()) < min_words or not sentence.source_ids:
         return STATUS_UNVERIFIED
 
+    quote_alnum = "".join(c for c in quote if c.isalnum())
     found_windows: list[str] = []
+
     for source_id in sentence.source_ids:
         if normalized_sources is not None and source_id in normalized_sources:
             src_norm = normalized_sources[source_id]
         else:
             src_norm = normalize(_get_source_text(source_texts, source_id))
 
+        # 1. Pencocokan substring eksak
         start = 0
+        exact_found = False
         while True:
             pos = src_norm.find(quote, start)
             if pos == -1:
                 break
+            exact_found = True
             w_start = max(0, pos - 400)
             w_end = min(len(src_norm), pos + len(quote) + 400)
             found_windows.append(src_norm[w_start:w_end])
             start = pos + 1
+
+        # 2. Toleransi teks: pencocokan alfanumerik bila eksak tidak ditemukan (T1.2)
+        if not exact_found and quote_alnum:
+            alnum_chars: list[str] = []
+            alnum_indices: list[int] = []
+            for idx, char in enumerate(src_norm):
+                if char.isalnum():
+                    alnum_chars.append(char)
+                    alnum_indices.append(idx)
+            src_alnum = "".join(alnum_chars)
+
+            start_alnum = 0
+            while True:
+                pos_alnum = src_alnum.find(quote_alnum, start_alnum)
+                if pos_alnum == -1:
+                    break
+                norm_start = alnum_indices[pos_alnum]
+                norm_end = alnum_indices[pos_alnum + len(quote_alnum) - 1] + 1
+                w_start = max(0, norm_start - 400)
+                w_end = min(len(src_norm), norm_end + 400)
+                found_windows.append(src_norm[w_start:w_end])
+                start_alnum = pos_alnum + 1
 
     if not found_windows:
         return STATUS_UNVERIFIED

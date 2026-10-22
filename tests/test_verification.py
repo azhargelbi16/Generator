@@ -142,3 +142,39 @@ def test_perlu_ditinjau_memiliki_alasan_di_verify_sections():
     statuses = verify_sections([sec], texts)
     assert statuses[0].status == STATUS_NEEDS_REVIEW
     assert "Kutipan ada" in statuses[0].reason
+
+
+# --- Task 1.2: Toleransi teks -----------------------------------------------
+
+
+def test_kutipan_enam_kata_dengan_perbedaan_tanda_baca_lolos():
+    texts = {0: "hasil panen padi mencapai 10.000 ton, menurut laporan resmi bps"}
+    # Kutipan 6 kata dengan perbedaan tanda baca (tanpa pemisah ribuan dan tanpa koma)
+    quote = "hasil panen padi mencapai 10000 ton menurut"
+    sentence = Sentence(
+        text="Hasil panen padi mencapai 10000 ton menurut laporan resmi.",
+        quote=quote,
+        source_ids=[0],
+    )
+    assert verify_sentence(sentence, texts) == STATUS_VERIFIED
+
+
+def test_min_words_lima_lolos_dan_empat_gagal():
+    texts = {0: "pertanian organik sangat penting bagi petani daerah"}
+    # 5 kata lolos
+    quote_5 = "pertanian organik sangat penting bagi"
+    sent_5 = Sentence(
+        text="Pertanian organik sangat penting bagi petani.",
+        quote=quote_5,
+        source_ids=[0],
+    )
+    assert verify_sentence(sent_5, texts) == STATUS_VERIFIED
+
+    # 4 kata gagal (< MIN_WORDS=5)
+    quote_4 = "pertanian organik sangat penting"
+    sent_4 = Sentence(
+        text="Pertanian organik sangat penting bagi petani.",
+        quote=quote_4,
+        source_ids=[0],
+    )
+    assert verify_sentence(sent_4, texts) == STATUS_UNVERIFIED
