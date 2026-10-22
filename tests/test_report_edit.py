@@ -45,7 +45,44 @@ def test_merge_for_regenerate_empty_old_returns_new():
     assert report.merge_for_regenerate([], new, overwrite_all=False) is new
 
 
+def test_tandai_semua_bukan_klaim_tidak_menandai_perlu_ditinjau():
+    from generator.verification import verify_sections, STATUS_NEEDS_REVIEW
+    from generator.report import mark_non_factual_done
+
+    texts = {0: "laporan penelitian " + GOOD}
+    s_non_factual = Sentence("Bab ini menguraikan analisis sistematis.", is_factual=False)
+    s_needs_review = Sentence(
+        text="Pemerintah melarang ekspor komoditas beras secara ketat di pasar internasional.",
+        quote=GOOD,
+        source_ids=[0],
+        is_factual=True,
+    )
+    s_verified = Sentence(
+        text=GOOD,
+        quote=GOOD,
+        source_ids=[0],
+        is_factual=True,
+    )
+
+    sec = Section(1, "Bab 1", [Paragraph([s_non_factual, s_needs_review, s_verified])])
+    statuses = verify_sections([sec], texts)
+
+    # Pastikan status awal sesuai
+    assert statuses[0].sentence.is_factual is False
+    assert statuses[1].status == STATUS_NEEDS_REVIEW
+    assert statuses[2].status == "terverifikasi"
+
+    # Jalankan aksi tandai semua yang bukan klaim
+    new_done = mark_non_factual_done(statuses, done=set())
+
+    # Kalimat non faktual HARUS masuk done
+    assert s_non_factual.uid in new_done
+    # Kalimat perlu_ditinjau TIDAK BOLEH ikut tertandai
+    assert s_needs_review.uid not in new_done
+    # Kalimat terverifikasi tidak perlu ditandai
+    assert s_verified.uid not in new_done
+
+
 def _section_with_manual():
     manual = report.apply_manual_edit(Sentence("asli.", "q", [0]), "Catatan manual saya.")
     return Section(1, "Bab Lama", [Paragraph([manual, Sentence("Lain.", "q", [0])])])
-

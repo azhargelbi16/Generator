@@ -206,3 +206,31 @@ def test_api_bridge_template_management(tmp_path: Path):
     assert f_res.get("success") is True
 
     db.close()
+
+
+def test_api_bridge_mark_non_factual_done_excludes_factual(tmp_path: Path):
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+    sections_dicts = [
+        {
+            "level": 1,
+            "title": "Bab",
+            "paragraphs": [
+                {
+                    "sentences": [
+                        {"text": "Opini.", "quote": "", "source_ids": [], "is_factual": False, "uid": "u-nonfact"},
+                        {"text": "Klaim.", "quote": "q", "source_ids": [0], "is_factual": True, "uid": "u-fact"},
+                    ]
+                }
+            ],
+        }
+    ]
+    res = bridge.mark_non_factual_done(sections_dicts, ["u-existing"])
+    assert res.get("success") is True
+    assert "u-nonfact" in res["done"]
+    assert "u-fact" not in res["done"]
+    assert "u-existing" in res["done"]
+    db.close()

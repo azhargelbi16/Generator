@@ -207,6 +207,8 @@ export const api = {
     callApi<{ success?: boolean; notes?: Array<{ section_title: string; sentence_uid: string; severity: string; comment: string }>; error?: string }>('request_dosen_review', sections, sources),
   computeCitations: (sources: SourceRecord[], sections: Section[], style: string) =>
     callApi<{ labels: Record<string, string>; references: string[]; cited_ids: number[] }>('compute_citations_and_references', sources, sections, style),
+  markNonFactualDone: (sections: Section[], currentDone: string[]) =>
+    callApi<{ success: boolean; done: string[] }>('mark_non_factual_done', sections, currentDone),
 
   // Preflight & Export
   runPreflight: (state: any) =>

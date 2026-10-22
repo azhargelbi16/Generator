@@ -147,6 +147,17 @@ def non_factual_uids(statuses: list[SentenceStatus]) -> list[str]:
     return [item.sentence.uid for item in statuses if item.status == STATUS_NON_FACTUAL]
 
 
+def mark_non_factual_done(
+    statuses: list[SentenceStatus], done: frozenset[str] | set[str] = frozenset()
+) -> set[str]:
+    """Tandai semua kalimat dengan is_factual == False sebagai selesai tanpa menandai kalimat perlu_ditinjau (T1.4)."""
+    result = set(done)
+    for st in statuses:
+        if not st.sentence.is_factual:
+            result.add(st.sentence.uid)
+    return result
+
+
 def cited_ids(statuses: list[SentenceStatus]) -> set[int]:
     """Indeks sumber yang benar-benar dirujuk kalimat yang akan disitasi."""
     referenced: set[int] = set()

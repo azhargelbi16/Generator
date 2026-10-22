@@ -867,6 +867,16 @@ class ApiBridge:
             for st in statuses
         ]
 
+    def mark_non_factual_done(self, sections_dicts: list[dict], current_done: list[str]) -> dict[str, Any]:
+        sections = report.sections_from_dicts(sections_dicts)
+        done_set = set(current_done)
+        for sec in sections:
+            for p in sec.paragraphs:
+                for s in p.sentences:
+                    if not s.is_factual:
+                        done_set.add(s.uid)
+        return {"success": True, "done": list(done_set)}
+
     def paraphrase_sentence(self, sentence_dict: dict, sources_data: list[dict]) -> dict[str, Any]:
         sent = report.sentence_from_dict(sentence_dict)
         para = content.Paragraph([sent])

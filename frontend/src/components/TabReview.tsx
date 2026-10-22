@@ -212,14 +212,29 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
     saveCurrentDraft(updated, doneUids);
   };
 
-  // Bulk actions
-  const handleMarkAllDone = () => {
-    const allUids = new Set<string>();
-    sections.forEach((sec) =>
-      sec.paragraphs.forEach((p) => p.sentences.forEach((s) => allUids.add(s.uid)))
-    );
-    setDoneUids(allUids);
-    saveCurrentDraft(sections, allUids);
+  // Bulk actions (T1.4)
+  const handleMarkAllNonFactual = async () => {
+    try {
+      const res = await api.markNonFactualDone(sections, Array.from(doneUids));
+      if (res?.success && res.done) {
+        const next = new Set(res.done);
+        setDoneUids(next);
+        saveCurrentDraft(sections, next);
+        toast.info('Semua kalimat bukan klaim faktual berhasil ditandai selesai.');
+        return;
+      }
+    } catch {
+      // fallback jika api offline
+    }
+    const next = new Set(doneUids);
+    statuses.forEach((st) => {
+      if (!st.is_factual) {
+        next.add(st.uid);
+      }
+    });
+    setDoneUids(next);
+    saveCurrentDraft(sections, next);
+    toast.info('Semua kalimat bukan klaim faktual berhasil ditandai selesai.');
   };
 
   const handleMarkVerifiedDone = () => {
@@ -404,6 +419,14 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
           >
             Setujui Semua Terverifikasi
+          </button>
+          <button
+            type="button"
+            onClick={handleMarkAllNonFactual}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
+            title="Tandai semua kalimat pengantar/opini (is_factual = false) sebagai selesai"
+          >
+            Tandai Semua Bukan Klaim
           </button>
           <button
             onClick={handleRequestDosenReview}
