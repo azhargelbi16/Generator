@@ -105,7 +105,8 @@ export interface Section {
 export interface SentenceStatus {
   index: number;
   uid: string;
-  status: 'terverifikasi' | 'belum_terverifikasi' | 'bukan_klaim' | 'bukan_klaim_faktual';
+  status: 'terverifikasi' | 'belum_terverifikasi' | 'tidak_terverifikasi' | 'perlu_ditinjau' | 'bukan_klaim' | 'bukan_klaim_faktual';
+  reason?: string;
   is_factual: boolean;
   source_ids: number[];
 }

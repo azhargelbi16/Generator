@@ -106,6 +106,10 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
     return st ? st.status : 'belum_terverifikasi';
   };
 
+  const getSentenceStatusObj = (uid: string) => {
+    return statuses.find((s) => s.uid === uid) || null;
+  };
+
   const isSentenceDone = (uid: string) => {
     return doneUids.has(uid);
   };
@@ -293,7 +297,10 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
   // Calculate statistics
   const totalSentences = statuses.length;
   const verifiedCount = statuses.filter((s) => s.status === 'terverifikasi').length;
-  const unverifiedCount = statuses.filter((s) => s.status === 'belum_terverifikasi').length;
+  const needsReviewCount = statuses.filter((s) => s.status === 'perlu_ditinjau').length;
+  const unverifiedCount = statuses.filter(
+    (s) => s.status === 'belum_terverifikasi' || s.status === 'tidak_terverifikasi'
+  ).length;
   const nonFactualCount = statuses.filter(
     (s) => s.status === 'bukan_klaim' || s.status === 'bukan_klaim_faktual'
   ).length;
@@ -301,6 +308,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
 
   const selectedSentence = selectedUid ? findSentence(selectedUid) : null;
   const selectedStatus = selectedUid ? getSentenceStatus(selectedUid) : null;
+  const selectedStatusObj = selectedUid ? getSentenceStatusObj(selectedUid) : null;
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-100">
@@ -315,9 +323,15 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>{verifiedCount} Terverifikasi</span>
           </span>
+          {needsReviewCount > 0 && (
+            <span className="flex items-center space-x-1 text-amber-700 font-semibold">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>{needsReviewCount} Perlu Ditinjau</span>
+            </span>
+          )}
           <span className="flex items-center space-x-1 text-rose-700 font-semibold">
             <AlertCircle className="w-3.5 h-3.5" />
-            <span>{unverifiedCount} Perlu Cek</span>
+            <span>{unverifiedCount} Belum Terverifikasi</span>
           </span>
           <span className="flex items-center space-x-1 text-slate-500 font-medium">
             <span>{nonFactualCount} Opini/Pengantar</span>
@@ -520,7 +534,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                             className={`cursor-pointer transition-all duration-150 relative rounded px-0.5 ${
                               isSelected
                                 ? 'bg-amber-200/90 text-slate-900 ring-2 ring-amber-400 font-medium'
-                                : status === 'belum_terverifikasi' && !isDone
+                                : status === 'perlu_ditinjau' && !isDone
+                                ? 'underline decoration-wavy decoration-amber-500 decoration-1 text-slate-900'
+                                : (status === 'belum_terverifikasi' || status === 'tidak_terverifikasi') && !isDone
                                 ? 'underline decoration-wavy decoration-rose-400 decoration-1 text-slate-900'
                                 : 'hover:bg-amber-50'
                             }`}
@@ -567,6 +583,8 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                     className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                       selectedStatus === 'terverifikasi'
                         ? 'bg-emerald-100 text-emerald-800'
+                        : selectedStatus === 'perlu_ditinjau'
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
                         : selectedStatus === 'bukan_klaim' || selectedStatus === 'bukan_klaim_faktual'
                         ? 'bg-slate-100 text-slate-600'
                         : 'bg-rose-100 text-rose-800'
@@ -574,9 +592,11 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                   >
                     {selectedStatus === 'terverifikasi'
                       ? '✓ Terverifikasi Sumber'
+                      : selectedStatus === 'perlu_ditinjau'
+                      ? '⚠ Perlu Ditinjau'
                       : selectedStatus === 'bukan_klaim' || selectedStatus === 'bukan_klaim_faktual'
                       ? '○ Bukan Klaim Faktual'
-                      : '⚠ Belum Terverifikasi'}
+                      : '✕ Belum Terverifikasi'}
                   </span>
                   {isSentenceDone(selectedSentence.uid) && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
@@ -591,6 +611,19 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                   <X className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Alasan untuk status perlu_ditinjau */}
+              {selectedStatus === 'perlu_ditinjau' && (
+                <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    <span className="font-bold block mb-0.5">Alasan Verifikasi:</span>
+                    <span>
+                      {selectedStatusObj?.reason || 'Kutipan ada, kalimatnya tidak sepenuhnya didukung sumber.'}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Inline Editor */}
               <div>
