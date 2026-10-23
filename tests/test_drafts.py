@@ -51,3 +51,75 @@ def test_draft_id_tidak_boleh_keluar_folder(tmp_path, monkeypatch):
         with pytest.raises(ValueError):
             drafts.save_draft(drafts.DraftState(buruk, {}, [], []))
     assert list(tmp_path.iterdir()) == []
+
+
+
+# --- Task 3.2: Enkripsi draf di disk -----------------------------------------
+
+
+def test_draft_baru_dienkripsi_tidak_memuat_teks_sumber_langsung(tmp_path, monkeypatch):
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    state = drafts.DraftState(
+        "d_secret",
+        {"judul": "Laporan Rahasia Organik"},
+        [{"title": "Jurnal Pertanian", "text": "RAHASIA_TEKS_SUMBER_12345"}],
+        [{"title": "Bab 1", "paragraphs": []}],
+    )
+    path = drafts.save_draft(state)
+
+    # Isi mentah berkas di disk tidak boleh memuat teks sumber polos
+    raw_disk_text = path.read_text(encoding="utf-8")
+    assert "RAHASIA_TEKS_SUMBER_12345" not in raw_disk_text
+    assert "Laporan Rahasia Organik" not in raw_disk_text
+
+    # Memuat kembali draf mengembalikan teks yang persis utuh
+    loaded = drafts.load_draft("d_secret")
+    assert loaded is not None
+    assert loaded.fields["judul"] == "Laporan Rahasia Organik"
+    assert loaded.sources[0]["text"] == "RAHASIA_TEKS_SUMBER_12345"
+
+
+def test_draf_lama_polos_masih_bisa_dibuka(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+
+    old_state = {
+        "draft_id": "d_old",
+        "fields": {"judul": "Draf Versi Lama Polos"},
+        "sources": [{"title": "Sumber Lama", "text": "Teks polos lama"}],
+        "sections": [],
+        "done": ["uid-1", "uid-2"],
+    }
+    old_file = tmp_path / "d_old.json"
+    old_file.write_text(json.dumps(old_state, indent=2), encoding="utf-8")
+
+    loaded = drafts.load_draft("d_old")
+    assert loaded is not None
+    assert loaded.fields["judul"] == "Draf Versi Lama Polos"
+    assert loaded.sources[0]["text"] == "Teks polos lama"
+    assert loaded.done == ["uid-1", "uid-2"]
+
+
+def test_fallback_polos_bila_dpapi_tidak_tersedia(tmp_path, monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    # Simulasikan DPAPI tidak tersedia (misal Linux atau kegagalan DPAPI)
+    monkeypatch.setattr(drafts, "_dpapi_protect", lambda data: None)
+
+    with caplog.at_level(logging.WARNING):
+        state = drafts.DraftState(
+            "d_fallback",
+            {"judul": "Draf Fallback"},
+            [{"title": "Sumber", "text": "Teks sumber fallback"}],
+            [],
+        )
+        path = drafts.save_draft(state)
+
+    # Catat warning di log tanpa membocorkan isi data
+    assert any("DPAPI tidak tersedia" in record.message for record in caplog.records)
+    assert not any("Teks sumber fallback" in record.message for record in caplog.records)
+
+    # Draf tetap tersimpan dan dapat dimuat
+    loaded = drafts.load_draft("d_fallback")
+    assert loaded is not None
+    assert loaded.fields["judul"] == "Draf Fallback"
