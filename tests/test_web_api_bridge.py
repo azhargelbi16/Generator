@@ -234,3 +234,46 @@ def test_api_bridge_mark_non_factual_done_excludes_factual(tmp_path: Path):
     assert "u-fact" not in res["done"]
     assert "u-existing" in res["done"]
     db.close()
+
+
+
+# --- Task 3.1: Jangan kirim API key ke frontend ------------------------------
+
+
+def test_api_bridge_api_key_privacy(tmp_path: Path):
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    cfg_file = tmp_path / "config.json"
+    cfg = config.Config(ai_api_key="secret-key-12345", ai_model="test-model")
+    config.save_config(cfg, cfg_file)
+
+    bridge = ApiBridge(db, config_path=cfg_file)
+
+    # 1. Respons get_config tidak boleh memuat ai_api_key asli dan harus ada ai_api_key_set=True
+    loaded = bridge.get_config()
+    assert loaded["ai_api_key"] == ""
+    assert loaded["ai_api_key_set"] is True
+    assert "secret-key-12345" not in loaded.values()
+
+    # 2. Simpan konfigurasi dengan ai_api_key kosong ("") tidak boleh menghapus key lama di disk
+    save_res = bridge.save_config({"ai_model": "updated-model", "ai_api_key": ""})
+    assert save_res["success"] is True
+    assert save_res["config"]["ai_api_key"] == ""
+    assert save_res["config"]["ai_api_key_set"] is True
+
+    # Cek berkas fisik di disk: key asli tetap terjaga
+    disk_cfg = config.load_config(cfg_file)
+    assert disk_cfg.ai_api_key == "secret-key-12345"
+    assert disk_cfg.ai_model == "updated-model"
+
+    # 3. Simpan dengan key baru yang tidak kosong harus memperbarui key di disk
+    save_res2 = bridge.save_config({"ai_api_key": "brand-new-key"})
+    assert save_res2["config"]["ai_api_key"] == ""
+    assert save_res2["config"]["ai_api_key_set"] is True
+
+    disk_cfg2 = config.load_config(cfg_file)
+    assert disk_cfg2.ai_api_key == "brand-new-key"
+
+    db.close()

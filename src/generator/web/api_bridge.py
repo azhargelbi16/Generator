@@ -61,7 +61,10 @@ class ApiBridge:
 
     def get_config(self) -> dict[str, Any]:
         self._cfg = config.load_config(self.config_path)
-        return asdict(self._cfg)
+        data = asdict(self._cfg)
+        data["ai_api_key_set"] = bool(self._cfg.ai_api_key and self._cfg.ai_api_key.strip())
+        data["ai_api_key"] = ""
+        return data
 
     def save_config(self, cfg_data: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -70,43 +73,50 @@ class ApiBridge:
         except (ValueError, TypeError):
             temp = 0.2
 
+        new_key = str(cfg_data.get("ai_api_key", "")).strip()
+        if not new_key:
+            api_key = self._cfg.ai_api_key
+        else:
+            api_key = new_key
+
         self._cfg = config.Config(
             ai_base_url=str(cfg_data.get("ai_base_url", "http://localhost:1234/v1")).strip(),
-            ai_api_key=str(cfg_data.get("ai_api_key", "")).strip(),
+            ai_api_key=api_key,
             ai_model=str(cfg_data.get("ai_model", "gpt-4o-mini")).strip(),
             ai_temperature=temp,
             citation_style=str(cfg_data.get("citation_style", "et_al")),
             dosen_review=bool(cfg_data.get("dosen_review", False)),
         )
         config.save_config(self._cfg, self.config_path)
-        return {"success": True, "config": asdict(self._cfg)}
+        res_data = asdict(self._cfg)
+        res_data["ai_api_key_set"] = bool(self._cfg.ai_api_key and self._cfg.ai_api_key.strip())
+        res_data["ai_api_key"] = ""
+        return {"success": True, "config": res_data}
 
     def test_ai_connection(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None) -> dict[str, Any]:
-        test_cfg = self._cfg
-        if base_url:
-            test_cfg = config.Config(
-                ai_base_url=str(base_url).strip(),
-                ai_api_key=str(api_key if api_key is not None else self._cfg.ai_api_key).strip(),
-                ai_model=str(model if model is not None else self._cfg.ai_model).strip(),
-                ai_temperature=self._cfg.ai_temperature,
-                citation_style=self._cfg.citation_style,
-                dosen_review=self._cfg.dosen_review,
-            )
+        key_to_use = str(api_key).strip() if (api_key and str(api_key).strip()) else self._cfg.ai_api_key
+        test_cfg = config.Config(
+            ai_base_url=str(base_url if base_url else self._cfg.ai_base_url).strip(),
+            ai_api_key=key_to_use,
+            ai_model=str(model if model is not None else self._cfg.ai_model).strip(),
+            ai_temperature=self._cfg.ai_temperature,
+            citation_style=self._cfg.citation_style,
+            dosen_review=self._cfg.dosen_review,
+        )
         cl = AIClient(test_cfg)
         ok, msg = client.check_connection(cl)
         return {"ok": ok, "message": msg}
 
     def fetch_models(self, base_url: str | None = None, api_key: str | None = None) -> dict[str, Any]:
-        test_cfg = self._cfg
-        if base_url:
-            test_cfg = config.Config(
-                ai_base_url=str(base_url).strip(),
-                ai_api_key=str(api_key if api_key is not None else self._cfg.ai_api_key).strip(),
-                ai_model=self._cfg.ai_model,
-                ai_temperature=self._cfg.ai_temperature,
-                citation_style=self._cfg.citation_style,
-                dosen_review=self._cfg.dosen_review,
-            )
+        key_to_use = str(api_key).strip() if (api_key and str(api_key).strip()) else self._cfg.ai_api_key
+        test_cfg = config.Config(
+            ai_base_url=str(base_url if base_url else self._cfg.ai_base_url).strip(),
+            ai_api_key=key_to_use,
+            ai_model=self._cfg.ai_model,
+            ai_temperature=self._cfg.ai_temperature,
+            citation_style=self._cfg.citation_style,
+            dosen_review=self._cfg.dosen_review,
+        )
         try:
             models = client.list_models(test_cfg)
             return {"ok": True, "models": models}

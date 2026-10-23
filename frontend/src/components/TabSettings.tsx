@@ -189,16 +189,23 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved }) => {
 
         {/* API Key */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-            API Key (Opsional untuk LLM Lokal)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+              API Key (Opsional untuk LLM Lokal)
+            </label>
+            {config.ai_api_key_set && (
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                ✓ Tersimpan di Sistem
+              </span>
+            )}
+          </div>
           <div className="relative">
             <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
             <input
               type={showKey ? 'text' : 'password'}
               value={config.ai_api_key}
               onChange={(e) => setConfig({ ...config, ai_api_key: e.target.value })}
-              placeholder="sk-..."
+              placeholder={config.ai_api_key_set ? "•••••••• (Tersimpan - Kosongkan jika tidak ingin mengubah)" : "sk-..."}
               className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all font-mono"
             />
             <button

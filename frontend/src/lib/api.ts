@@ -58,6 +58,7 @@ export interface TemplateItem {
 export interface AppConfig {
   ai_base_url: string;
   ai_api_key: string;
+  ai_api_key_set?: boolean;
   ai_model: string;
   ai_temperature: number;
   citation_style: string;
