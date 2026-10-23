@@ -125,7 +125,7 @@ def run_checks(
         Check("Nama berkas", not _filename_needs_fix(judul), safe_name),
         Check("Nama penulis", not mojibake, "; ".join(mojibake)),
         Check("Logo", _logo_ok(logo_path), str(logo_path or "Belum dipilih")),
-        Check("Gaya sitasi", True, _STYLE_LABEL.get(style, style)),
+        Check("Gaya sitasi", style in _STYLE_LABEL, _STYLE_LABEL.get(style, f"Tidak didukung: {style}")),
     ]
 
 
@@ -154,6 +154,8 @@ def find_issues(
         )
     if not _logo_ok(logo_path):
         issues.append(PreflightIssue("logo_missing", "Logo belum dipilih atau berkas tidak ada."))
+    if style not in _STYLE_LABEL:
+        issues.append(PreflightIssue("citation_style", f"Gaya sitasi '{style}' tidak didukung."))
     return issues
 
 

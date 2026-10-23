@@ -103,3 +103,22 @@ def test_cek_konsistensi_menemukan_entri_tanpa_judul():
     checks = run_checks("Laporan Pertanian", sources, statuses, {0}, None)
     assert checks[1].ok is False
     assert "tanpa judul" in checks[1].detail
+
+
+
+# --- Task 4.2: Validasi gaya sitasi di preflight -----------------------------
+
+
+def test_gaya_sitasi_tidak_dikenal_menghasilkan_baris_gagal():
+    sources, sections = _fixture()
+    statuses = _verified_statuses(sources, sections)
+
+    # 1. run_checks dengan gaya tidak dikenal menghasilkan check ok is False
+    checks = run_checks("Laporan Pertanian", sources, statuses, {0}, None, style="apa7_custom")
+    gaya_check = next(c for c in checks if c.label == "Gaya sitasi")
+    assert gaya_check.ok is False
+    assert "Tidak didukung" in gaya_check.detail
+
+    # 2. find_issues juga mendeteksi citation_style issue
+    issues = find_issues("Laporan Pertanian", sources, statuses, {0}, None, style="unknown_style")
+    assert any(i.kind == "citation_style" for i in issues)
