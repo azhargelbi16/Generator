@@ -995,15 +995,16 @@ class ApiBridge:
         open_word = state.get("open_word", True)
         style = state.get("style", self._cfg.citation_style)
 
-        tpls = self.db.list_template()
         tpl_id_int: int | None = None
         if template_id is not None:
             try:
                 tpl_id_int = int(template_id)
             except (ValueError, TypeError):
                 tpl_id_int = None
-        if tpl_id_int is None and tpls:
-            tpl_id_int = tpls[0].id
+        if tpl_id_int is None:
+            return {"error": "Pilih template terlebih dahulu"}
+
+        tpls = self.db.list_template()
         tpl = next((t for t in tpls if t.id == tpl_id_int), None)
         if not tpl or not Path(tpl.path).is_file():
             return {"error": "Template DOCX tidak ditemukan."}

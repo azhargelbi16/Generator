@@ -127,10 +127,10 @@ def test_api_bridge_export_report_none_template_id(tmp_path: Path):
 
     bridge = ApiBridge(db, config_path=tmp_path / "config.json")
 
-    # When no template exists, export_report should return error cleanly, not raise TypeError
+    # Bila template_id kosong, kembalikan pesan "Pilih template terlebih dahulu" (T4.1)
     res = bridge.export_report({"template_id": None, "sources": [], "sections": []})
     assert "error" in res
-    assert "Template DOCX tidak ditemukan" in res["error"]
+    assert res["error"] == "Pilih template terlebih dahulu" 
     db.close()
 
 
@@ -275,5 +275,31 @@ def test_api_bridge_api_key_privacy(tmp_path: Path):
 
     disk_cfg2 = config.load_config(cfg_file)
     assert disk_cfg2.ai_api_key == "brand-new-key"
+
+    db.close()
+
+
+
+# --- Task 4.1: Jangan diam-diam memakai template pertama ---------------------
+
+
+def test_export_report_tanpa_template_id_gagal(tmp_path: Path):
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    dummy_docx = tmp_path / "tpl.docx"
+    dummy_docx.write_text("dummy", encoding="utf-8")
+    db.add_template(database.Template(0, "Template Bawaan", "Deskripsi", str(dummy_docx)))
+
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    # 1. Panggil export_report dengan template_id=None
+    res1 = bridge.export_report({"template_id": None})
+    assert res1.get("error") == "Pilih template terlebih dahulu"
+
+    # 2. Panggil export_report dengan state kosong
+    res2 = bridge.export_report({})
+    assert res2.get("error") == "Pilih template terlebih dahulu"
 
     db.close()
