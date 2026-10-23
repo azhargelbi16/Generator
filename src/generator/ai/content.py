@@ -321,6 +321,55 @@ def _partial_sections(collected: list[tuple[str, Sentence]]) -> list[Section]:
     return result
 
 
+_STOPWORDS_ID = frozenset({
+    "yang", "dan", "di", "ke", "dari", "untuk", "dengan", "pada", "adalah", "ini", "itu", "tidak"
+})
+
+_SECTION_SYNONYMS: dict[str, set[str]] = {
+    "pendahuluan": {"pendahuluan", "latar", "belakang", "rumusan", "tujuan", "manfaat", "pengantar"},
+    "metode": {"metode", "metodologi", "prosedur", "tahapan", "pelaksanaan", "alat", "bahan", "desain", "instrumen"},
+    "hasil": {"hasil", "pembahasan", "temuan", "diskusi", "analisis", "pengujian", "evaluasi"},
+    "kesimpulan": {"kesimpulan", "penutup", "simpulan", "saran", "rekomendasi"},
+}
+
+
+def select_relevant_outline(outline: list[str], batch: list[tuple[int, str]]) -> list[str]:
+    """Petakan chunk ke 1 sampai 3 bab target berdasarkan kecocokan kata kunci (T2.2)."""
+    if not outline or len(outline) <= 1:
+        return list(outline)
+
+    batch_text = " ".join(text for _, text in batch).lower()
+    batch_words = set(re.findall(r"\w+", batch_text))
+
+    scores: dict[str, int] = {}
+    for title in outline:
+        norm_t = title.lower()
+        title_words = set(re.findall(r"\w+", norm_t)) - _STOPWORDS_ID
+        kw = set(title_words)
+        for key, syns in _SECTION_SYNONYMS.items():
+            if key in norm_t:
+                kw.update(syns)
+
+        score = sum(1 for k in kw if k in batch_words)
+        if norm_t in batch_text:
+            score += 3
+        scores[title] = score
+
+    positive_scores = {t: s for t, s in scores.items() if s > 0}
+    if not positive_scores or len(set(scores.values())) == 1:
+        return list(outline)
+
+    sorted_by_score = sorted(positive_scores.items(), key=lambda item: item[1], reverse=True)
+    max_score = sorted_by_score[0][1]
+
+    chosen = [t for t, s in sorted_by_score if s >= max(1, max_score * 0.5)][:3]
+    if not chosen:
+        return list(outline)
+
+    target_set = set(chosen)
+    return [t for t in outline if t in target_set]
+
+
 def generate_sections(
     topic: str,
     outline: list[str],
@@ -373,8 +422,9 @@ def generate_sections(
         total += 1
         if progress is not None:
             progress.batch_started(number, len(batches))
+        target_outline = select_relevant_outline(outline, batch)
         messages = prompts.content_prompt(
-            topic, outline, sources, batch,
+            topic, target_outline, sources, batch,
             variant=variant_spec.code if variant_spec is not None else None,
         )
         data = None

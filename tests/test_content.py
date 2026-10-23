@@ -349,3 +349,81 @@ def test_fallback_tanpa_chat_stream_reveal_per_batch_tanpa_duplikat():
     assert len(set(texts)) == len(texts)
     assert progress.finished_flags == [False]
     assert _serialize(sections) == ANCHOR_SECTIONS
+
+
+
+# --- Task 2.2: Kirim hanya bab relevan per batch ----------------------------
+
+
+def test_batch_dengan_sumber_berbeda_hanya_meminta_bab_relevan_dan_urutan_akhir_sesuai_outline():
+    from generator.ai.content import select_relevant_outline
+
+    # Outline laporan 4 bab
+    outline = ["Pendahuluan", "Metode Penelitian", "Hasil dan Pembahasan", "Kesimpulan"]
+
+    # Sumber 0 membahas metode penelitian
+    src0_text = "Metode penelitian ini menggunakan prosedur eksperimen laboratorium alat dan bahan kimia secara terstandar."
+    # Sumber 1 membahas pendahuluan dan latar belakang
+    src1_text = "Latar belakang masalah dan tujuan dari penelitian pendahuluan ini sangat mendasar bagi pembangunan daerah."
+
+    # Periksa select_relevant_outline secara langsung:
+    batch_metode = [(0, src0_text)]
+    batch_pendahuluan = [(1, src1_text)]
+
+    assert select_relevant_outline(outline, batch_metode) == ["Metode Penelitian"]
+    assert select_relevant_outline(outline, batch_pendahuluan) == ["Pendahuluan"]
+
+    # Reply untuk batch metode (datang pertama)
+    reply_metode = json.dumps({
+        "sections": [{
+            "level": 1,
+            "title": "Metode Penelitian",
+            "paragraphs": [{"sentences": [
+                {"text": "Metode penelitian dirancang secara eksperimental.", "quote": "Metode penelitian ini", "source_ids": [0], "is_factual": True}
+            ]}]
+        }]
+    })
+
+    # Reply untuk batch pendahuluan (datang kedua)
+    reply_pendahuluan = json.dumps({
+        "sections": [{
+            "level": 1,
+            "title": "Pendahuluan",
+            "paragraphs": [{"sentences": [
+                {"text": "Latar belakang masalah berfokus pada efisiensi.", "quote": "Latar belakang masalah", "source_ids": [1], "is_factual": True}
+            ]}]
+        }]
+    })
+
+    client = FakeClient([reply_metode, reply_pendahuluan])
+    sources = [
+        Source([Author("Santoso", "Budi")], "2020", "T", "J"),
+        Source([Author("Wijaya", "Ani")], "2021", "U", "J"),
+    ]
+
+    # Eksekusi generate_sections dengan dua sumber terpisah
+    sections = generate_sections(
+        "tema",
+        outline,
+        sources,
+        [src0_text, src1_text],
+        client,
+        max_prompt_chars=150,
+    )
+
+    # 1. Pastikan setiap batch HANYA meminta bab yang relevan di pesan AI
+    assert client.calls == 2
+    msg_batch0 = client.messages[0][1]["content"]  # Batch 0 (src0: metode)
+    msg_batch1 = client.messages[1][1]["content"]  # Batch 1 (src1: pendahuluan)
+
+    assert "Metode Penelitian" in msg_batch0
+    assert "Pendahuluan" not in msg_batch0
+    assert "Kesimpulan" not in msg_batch0
+
+    assert "Pendahuluan" in msg_batch1
+    assert "Metode Penelitian" not in msg_batch1
+    assert "Kesimpulan" not in msg_batch1
+
+    # 2. Urutan akhir hasil tetap sesuai urutan outline asli ("Pendahuluan" sebelum "Metode Penelitian")
+    titles = [s.title for s in sections]
+    assert titles == ["Pendahuluan", "Metode Penelitian"]
