@@ -506,3 +506,47 @@ def test_generate_sections_dedup_parafrase_ringan():
 
     sentences = [s for p in sections[0].paragraphs for s in p.sentences]
     assert len(sentences) == 1
+
+
+
+# --- Uji Optimasi 15+ Sumber & Pembersihan Noise Dokumen --------------------
+
+
+def test_15_sources_adaptive_batching_budgeting():
+    from generator.ai.content import generate_sections
+    # 15 sumber referensi dengan teks panjang
+    srcs = [
+        Source([Author(f"Penulis{i}", "A")], "2023", f"Jurnal {i}", "J")
+        for i in range(15)
+    ]
+    texts = [f"Teks ilmiah penting sumber {i}. " * 200 for i in range(15)]
+    c = FakeClient([REPLY, REPLY, REPLY, REPLY, REPLY])
+
+    secs = generate_sections(
+        "Tema Uji 15 Sumber",
+        ["BAB 1. Pendahuluan", "BAB 2. Metode", "BAB 3. Hasil", "BAB 4. Penutup"],
+        srcs,
+        texts,
+        c,
+        max_prompt_chars=12000,
+    )
+
+    # Buktikan bahwa 15 sumber dibudgetkan secara adaptif menjadi maksimal 3 batch (bukan 45 batch!)
+    assert c.calls <= 3, f"Jumlah batch ({c.calls}) melebihi budget adaptif!"
+    assert len(secs) >= 1
+
+
+def test_prune_noise_from_source_text():
+    from generator.ai.content import prune_noise_from_source_text
+
+    doc = (
+        "Abstrak penelitian ini membahas inovasi sistem kontrol cerdas.\n"
+        + "Metodologi dan hasil pengujian menunjukkan efisiensi sebesar 94%.\n" * 40
+        + "\n\nDaftar Pustaka\n"
+        + "1. Smith, J. (2019). Machine learning basics.\n"
+        + "2. Doe, A. (2020). Advanced AI systems.\n" * 50
+    )
+    pruned = prune_noise_from_source_text(doc)
+    assert "Daftar Pustaka" not in pruned
+    assert "Smith, J." not in pruned
+    assert "efisiensi sebesar 94%" in pruned

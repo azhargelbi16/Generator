@@ -352,11 +352,45 @@ _STOPWORDS_ID = frozenset({
     "yang", "dan", "di", "ke", "dari", "untuk", "dengan", "pada", "adalah", "ini", "itu", "tidak"
 })
 
+_BIBLIO_RE = re.compile(
+    r"(?:\n\s*(?:daftar\s+pustaka|referensi|references|bibliography|works\s+cited)\s*\n).*",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def prune_noise_from_source_text(text: str) -> str:
+    """Buang bagian daftar pustaka/referensi di ujung dokumen akademik agar tidak membebani prompt LLM."""
+    if not text or len(text) < 1000:
+        return text
+    match = _BIBLIO_RE.search(text)
+    if match and match.start() > 1000:
+        cleaned = text[: match.start()].strip()
+        if len(cleaned) >= 800:
+            return cleaned
+    return text
+
+
 _SECTION_SYNONYMS: dict[str, set[str]] = {
-    "pendahuluan": {"pendahuluan", "latar", "belakang", "rumusan", "tujuan", "manfaat", "pengantar"},
-    "metode": {"metode", "metodologi", "prosedur", "tahapan", "pelaksanaan", "alat", "bahan", "desain", "instrumen"},
-    "hasil": {"hasil", "pembahasan", "temuan", "diskusi", "analisis", "pengujian", "evaluasi"},
-    "kesimpulan": {"kesimpulan", "penutup", "simpulan", "saran", "rekomendasi"},
+    "pendahuluan": {
+        "pendahuluan", "latar", "belakang", "rumusan", "tujuan", "manfaat", "pengantar",
+        "introduction", "background", "objective", "purpose", "overview"
+    },
+    "tinjauan": {
+        "tinjauan", "pustaka", "landasan", "teori", "studi", "literatur", "kajian", "terdahulu",
+        "literature", "review", "related", "work", "theoretical", "framework"
+    },
+    "metode": {
+        "metode", "metodologi", "prosedur", "tahapan", "pelaksanaan", "alat", "bahan", "desain", "instrumen",
+        "method", "methodology", "procedure", "experimental", "materials", "algorithm", "dataset"
+    },
+    "hasil": {
+        "hasil", "pembahasan", "temuan", "diskusi", "analisis", "pengujian", "evaluasi", "komparasi",
+        "result", "results", "discussion", "findings", "analysis", "evaluation", "performance"
+    },
+    "kesimpulan": {
+        "kesimpulan", "penutup", "simpulan", "saran", "rekomendasi", "implikasi",
+        "conclusion", "conclusions", "summary", "future", "recommendation"
+    },
 }
 
 
@@ -430,12 +464,27 @@ def generate_sections(
             return format_spec.normalize_sections(variant_spec, result)
         return _order_by_outline(result, outline)
 
+    num_sources = len(source_texts)
+    # Alokasi budget karakter adaptif per sumber agar jumlah total batch selalu efisien (1 s/d 3 batch)
+    if num_sources > 2:
+        budget_per_source = max(2000, min(8000, 24000 // num_sources))
+    else:
+        budget_per_source = max_prompt_chars
+
     chunk_refs: list[tuple[int, str]] = []
-    for source_id, text in enumerate(source_texts):
-        for chunk in chunk_text(text, max_chars=max_prompt_chars):
-            chunk_refs.append((source_id, chunk.text))
+    for source_id, raw_text in enumerate(source_texts):
+        text = prune_noise_from_source_text(raw_text)
+        if num_sources > 2 and len(text) > budget_per_source:
+            head_len = int(budget_per_source * 0.65)
+            tail_len = budget_per_source - head_len
+            distilled = text[:head_len] + "\n\n[...]\n\n" + text[-tail_len:]
+            chunk_refs.append((source_id, distilled))
+        else:
+            for chunk in chunk_text(text, max_chars=max_prompt_chars):
+                chunk_refs.append((source_id, chunk.text))
 
     batches = list(_batches(chunk_refs, max_prompt_chars))
+    total_b = len(batches)
     source_texts_by_id = {index: text for index, text in enumerate(source_texts)}
     emitted: set[str] = set()
     sections: list[Section] = []
@@ -448,8 +497,16 @@ def generate_sections(
             break
         total += 1
         if progress is not None:
-            progress.batch_started(number, len(batches))
+            progress.batch_started(number, total_b)
         target_outline = select_relevant_outline(outline, batch)
+        # Jika select_relevant_outline mengembalikan semua bab dan ada lebih dari 1 batch,
+        # bagi outline agar tiap batch fokus dan tidak melebihi batas token output (finish_reason=length)
+        if len(target_outline) == len(outline) and len(outline) > 2 and total_b > 1:
+            mid = (len(outline) + 1) // 2
+            if number <= total_b // 2:
+                target_outline = outline[:mid]
+            else:
+                target_outline = outline[mid - 1 :]
         messages = prompts.content_prompt(
             topic, target_outline, sources, batch,
             variant=variant_spec.code if variant_spec is not None else None,
