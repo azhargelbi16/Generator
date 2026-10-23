@@ -34,3 +34,32 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
+
+@keyframes sentenceFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+    background-color: rgba(191, 219, 254, 0.4);
+  }
+  50% {
+    background-color: rgba(219, 234, 254, 0.2);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    background-color: transparent;
+  }
+}
+
+.animate-sentence-born {
+  animation: sentenceFadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-cursor-blink {
+  animation: cursorBlink 0.9s infinite;
+}

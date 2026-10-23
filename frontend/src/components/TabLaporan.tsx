@@ -35,9 +35,13 @@ import { toast } from '../lib/toast';
 
 interface TabLaporanProps {
   onGenerateComplete: () => void;
+  onGeneratingChange?: (generating: boolean) => void;
 }
 
-export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) => {
+export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGeneratingChange }) => {
+  const streamEndRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
   // Inputs & Setup
   const [topic, setTopic] = useState('');
   const [sources, setSources] = useState<SourceRecord[]>([]);
@@ -84,6 +88,10 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
   const [recentSentences, setRecentSentences] = useState<Array<{ uid: string; text: string; status: string }>>([]);
 
   useEffect(() => {
+    onGeneratingChange?.(isGenerating);
+  }, [isGenerating, onGeneratingChange]);
+
+  useEffect(() => {
     loadInitialData();
 
     // Listen to pywebview custom events
@@ -91,7 +99,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
       setGenProgress(e.detail);
     };
     const handleSentenceBorn = (e: any) => {
-      setRecentSentences((prev) => [e.detail, ...prev.slice(0, 15)]);
+      setRecentSentences((prev) => [...prev, e.detail]);
     };
     const handleGenComplete = () => {
       setIsGenerating(false);
@@ -114,6 +122,19 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
       window.removeEventListener('gen_error', handleGenError);
     };
   }, []);
+
+  // Smooth auto-scroll saat kalimat baru tiba
+  useEffect(() => {
+    if (autoScroll && isGenerating) {
+      streamEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [recentSentences, autoScroll, isGenerating]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 140;
+    setAutoScroll(isNearBottom);
+  };
 
   const loadInitialData = async () => {
     try {
@@ -374,6 +395,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
 
     setIsGenerating(true);
     setRecentSentences([]);
+    setAutoScroll(true);
     const res = await api.startGeneration({
       topic,
       outline,
@@ -393,70 +415,125 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      {/* Live Generation Overlay View */}
+      {/* Live Generation Paper Canvas */}
       {isGenerating ? (
-        <div className="flex-1 bg-slate-900 text-white flex flex-col p-8 overflow-hidden select-none">
-          <div className="max-w-4xl w-full mx-auto flex-1 flex flex-col justify-between">
-            {/* Header & Status */}
-            <div>
-              <div className="flex items-center justify-between pb-6 border-b border-slate-800">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-brand-600/30 border border-brand-500/50 flex items-center justify-center text-brand-400 animate-pulse">
-                    <Sparkles className="w-5 h-5" />
+        <div className="flex-1 bg-slate-100/90 flex flex-col h-full overflow-hidden select-none">
+          {/* Top Floating Glass Header */}
+          <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-8 py-4 shrink-0 shadow-xs z-10">
+            <div className="max-w-4xl mx-auto flex items-center justify-between">
+              <div className="flex items-center space-x-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs shrink-0">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight truncate">
+                      {topic || 'Menyusun Laporan Akademik...'}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-extrabold border border-blue-200 shrink-0">
+                      Batch {genProgress.batch} dari {genProgress.total}
+                    </span>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white tracking-tight">AI Sedang Menyusun Laporan...</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Batch {genProgress.batch} dari {genProgress.total} • Kalimat langsung diverifikasi dengan teks sumber
-                    </p>
+                  <div className="flex items-center space-x-3 text-xs text-slate-500 mt-1">
+                    <span className="flex items-center gap-1 font-semibold text-slate-700">
+                      <FileText className="w-3.5 h-3.5 text-blue-600" />
+                      <span>{recentSentences.length} Kalimat Disusun</span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-emerald-700 font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{recentSentences.filter((s) => s.status === 'terverifikasi').length} Terverifikasi</span>
+                    </span>
+                    <span>•</span>
+                    <span className="text-slate-400">Verifikasi Sitasi APA 7 Real-Time</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="flex items-center space-x-3 shrink-0">
                 <button
+                  type="button"
                   onClick={handleCancelGenerate}
-                  className="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-semibold flex items-center space-x-2 transition"
+                  className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-xs active:scale-95"
                 >
-                  <Square className="w-3.5 h-3.5" />
-                  <span>Batalkan</span>
+                  <Square className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
+                  <span>Batalkan Generasi</span>
                 </button>
               </div>
-
-              {/* Progress bar */}
-              <div className="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className="bg-brand-500 h-full transition-all duration-300"
-                  style={{ width: `${Math.round((genProgress.batch / Math.max(1, genProgress.total)) * 100)}%` }}
-                />
-              </div>
             </div>
 
-            {/* Live Streaming Sentences Box */}
-            <div className="my-6 flex-1 bg-slate-950/70 border border-slate-800/80 rounded-2xl p-6 overflow-y-auto font-serif space-y-3">
-              <span className="text-[11px] font-sans font-bold uppercase tracking-wider text-brand-400/80 block mb-2">
-                Kalimat Baru Lahir & Diverifikasi:
-              </span>
-              {recentSentences.map((s, idx) => (
-                <div
-                  key={s.uid || idx}
-                  className="text-sm leading-relaxed text-slate-200 transition-all animate-fadeIn"
-                >
-                  <span>{s.text}</span>{' '}
-                  <span
-                    className={`text-[10px] font-sans font-bold px-1.5 py-0.5 rounded ${
-                      s.status === 'terverifikasi'
-                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                        : s.status === 'bukan_klaim'
-                        ? 'bg-slate-800 text-slate-400'
-                        : 'bg-amber-950 text-amber-400 border border-amber-800/60'
-                    }`}
-                  >
-                    {s.status}
-                  </span>
+            {/* Smooth progress bar */}
+            <div className="max-w-4xl mx-auto mt-3 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full transition-all duration-500 rounded-full"
+                style={{ width: `${Math.round((genProgress.batch / Math.max(1, genProgress.total)) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Flowing A4 Paper Sheet Preview */}
+          <div
+            ref={containerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto p-6 md:p-8 flex justify-center"
+          >
+            <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200/90 p-8 md:p-12 paper-sheet font-serif min-h-[600px] flex flex-col justify-between">
+              <div>
+                {/* Report Title on Paper */}
+                <div className="text-center pb-6 mb-8 border-b border-slate-200">
+                  <h1 className="text-lg md:text-xl font-bold text-slate-900 tracking-tight font-sans">
+                    {topic.toUpperCase() || 'LAPORAN AKADEMIK'}
+                  </h1>
+                  <p className="text-xs text-slate-500 font-sans mt-2">
+                    Disusun otomatis berbasis sintesis {sources.length} sumber referensi • Format Baku Akademik
+                  </p>
                 </div>
-              ))}
-            </div>
 
-            <div className="text-center text-xs text-slate-500">
-              Menjaga akurasi kutipan APA 7 • Bab dinormalisasi sesuai varian yang dipilih
+                {/* Sentences flow as real paragraphs */}
+                <div className="text-slate-800 text-[15px] leading-relaxed md:leading-[1.85] text-justify space-y-4">
+                  {recentSentences.length === 0 ? (
+                    <div className="text-center py-24 text-slate-400 font-sans text-xs flex flex-col items-center space-y-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                      <span>Mempersiapkan sintesis pustaka dan merancang kerangka bab...</span>
+                    </div>
+                  ) : (
+                    <div className="inline">
+                      {recentSentences.map((s, idx) => {
+                        const isLatest = idx === recentSentences.length - 1;
+                        return (
+                          <span
+                            key={s.uid || idx}
+                            className={`inline transition-all ${
+                              isLatest ? 'animate-sentence-born bg-blue-50/60 font-medium' : ''
+                            }`}
+                          >
+                            <span>{s.text} </span>
+                          </span>
+                        );
+                      })}
+                      {/* Blinking typing cursor at end */}
+                      <span className="inline-block w-1.5 h-4 bg-blue-600 animate-cursor-blink ml-1 align-middle rounded-xs" />
+                    </div>
+                  )}
+                  <div ref={streamEndRef} className="h-4" />
+                </div>
+              </div>
+
+              {/* Floating Bottom Auto-scroll Pill (if user scrolled up) */}
+              {!autoScroll && (
+                <div className="sticky bottom-4 flex justify-center mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutoScroll(true);
+                      streamEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="px-3.5 py-1.5 bg-slate-900/90 text-white text-xs font-semibold rounded-full shadow-lg backdrop-blur-md flex items-center space-x-1.5 hover:bg-slate-800 transition"
+                  >
+                    <span>Gulir ke kalimat terbaru ↓</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

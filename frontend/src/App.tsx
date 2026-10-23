@@ -15,6 +15,7 @@ export const App: React.FC = () => {
   const [aiConnected, setAiConnected] = useState(false);
   const [aiModel, setAiModel] = useState('');
   const [toastData, setToastData] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   useEffect(() => {
     checkAppStatus(true);
@@ -98,6 +99,7 @@ export const App: React.FC = () => {
         unverifiedCount={unverifiedCount}
         aiConnected={aiConnected}
         aiModel={aiModel}
+        isGenerating={isGeneratingReport}
       />
 
       {/* Main Content Workspace */}
@@ -128,19 +130,26 @@ export const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Dynamic Tab Body */}
+        {/* Dynamic Tab Body (Preserved / Keep-Alive) */}
         <div className="flex-1 flex overflow-hidden relative bg-slate-50">
-          {currentTab === 'laporan' && (
-            <TabLaporan onGenerateComplete={handleGenerateComplete} />
-          )}
-          {currentTab === 'review' && (
+          <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'laporan' ? 'flex' : 'hidden'}`}>
+            <TabLaporan
+              onGenerateComplete={handleGenerateComplete}
+              onGeneratingChange={setIsGeneratingReport}
+            />
+          </div>
+          <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'review' ? 'flex' : 'hidden'}`}>
             <TabReview onExportSuccess={handleExportSuccess} />
-          )}
-          {currentTab === 'data' && <TabData />}
-          {currentTab === 'template' && <TabTemplate />}
-          {currentTab === 'settings' && (
+          </div>
+          <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'data' ? 'flex' : 'hidden'}`}>
+            <TabData />
+          </div>
+          <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'template' ? 'flex' : 'hidden'}`}>
+            <TabTemplate />
+          </div>
+          <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'settings' ? 'flex' : 'hidden'}`}>
             <TabSettings onConfigSaved={() => checkAppStatus(true)} />
-          )}
+          </div>
         </div>
 
         {/* Global SaaS Floating Toast Notification */}

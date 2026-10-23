@@ -19,6 +19,7 @@ interface SidebarProps {
   unverifiedCount: number;
   aiConnected: boolean;
   aiModel: string;
+  isGenerating?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,14 +28,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   unverifiedCount,
   aiConnected,
   aiModel,
+  isGenerating = false,
 }) => {
   const navItems = [
     {
       key: 'laporan' as TabKey,
       label: 'Studio Laporan',
-      desc: 'Penyusunan & Sumber AI',
+      desc: isGenerating ? 'Sedang Menyusun AI...' : 'Penyusunan & Sumber AI',
       icon: FileText,
-      badge: null,
+      badge: isGenerating ? 'Menulis...' : null,
+      badgeType: isGenerating ? 'active' : null,
     },
     {
       key: 'review' as TabKey,
@@ -123,7 +126,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 {item.badge !== null && (
                   <div className="shrink-0 pl-1">
-                    {item.badgeType === 'warning' ? (
+                    {item.badgeType === 'active' ? (
+                      <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-300 animate-pulse flex items-center gap-1 shadow-xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping shrink-0" />
+                        <span>{item.badge}</span>
+                      </span>
+                    ) : item.badgeType === 'warning' ? (
                       <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
                         {item.badge}
                       </span>
