@@ -356,10 +356,10 @@ def test_chat_kirim_max_tokens_eksplisit_dan_streaming_timeout(monkeypatch):
     assert rekam["payload"]["max_tokens"] == 4096
     assert rekam["timeout"] == 120
 
-    # 2. Streaming: max_tokens default 4096 dan timeout 300
+    # 2. Streaming: max_tokens default 4096 dan timeout (300, 5)
     list(client.chat_stream([{"role": "user", "content": "ping"}]))
     assert rekam["payload"]["max_tokens"] == 4096
-    assert rekam["timeout"] == 300
+    assert rekam["timeout"] == (300, 5)
 
 
 def test_chat_finish_reason_length_raises_aierror(monkeypatch):
@@ -451,3 +451,66 @@ def test_batch_terpotong_gagal_tapi_batch_lain_selamat(monkeypatch):
     )
     assert len(secs) >= 1
     assert secs[0].paragraphs[0].sentences[0].text == "Kalimat yang berhasil."
+
+
+# --- Task 2.4: Pembatalan streaming responsif --------------------------------
+
+
+def test_chat_stream_pembatalan_berhenti_kurang_dari_10_detik():
+    import socket
+    import threading
+    import time
+    from generator.ai.client import AIClient
+    from generator.config import Config
+
+    def slow_server(port_holder):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        port_holder.append(port)
+        s.listen(1)
+        conn, _ = s.accept()
+        # Baca seluruh header request
+        req = b""
+        while b"\r\n\r\n" not in req:
+            c = conn.recv(1024)
+            if not c:
+                break
+            req += c
+        # Kirim header 200 chunked dan satu potongan awal
+        conn.sendall(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/event-stream\r\n\r\n"
+        )
+        c1 = b'data: {"choices":[{"delta":{"content":"mulai "}}]}\n\n'
+        conn.sendall(hex(len(c1))[2:].encode() + b"\r\n" + c1 + b"\r\n")
+        # Lalu diam 20 detik (simulasi respon lambat)
+        time.sleep(20)
+        try:
+            conn.close()
+            s.close()
+        except Exception:
+            pass
+
+    ports = []
+    t = threading.Thread(target=slow_server, args=(ports,), daemon=True)
+    t.start()
+    while not ports:
+        time.sleep(0.01)
+
+    cfg = Config(f"http://127.0.0.1:{ports[0]}", "k", "m", 0.2)
+    client = AIClient(cfg)
+    cancel = threading.Event()
+
+    def do_cancel():
+        time.sleep(0.5)
+        cancel.set()
+
+    threading.Thread(target=do_cancel, daemon=True).start()
+
+    t0 = time.time()
+    stream = client.chat_stream([{"role": "user", "content": "halo"}], cancel=cancel)
+    items = list(stream)
+    duration = time.time() - t0
+
+    assert items == []
+    assert duration < 10.0, f"Pembatalan memakan waktu {duration:.2f} detik (>= 10 detik)"

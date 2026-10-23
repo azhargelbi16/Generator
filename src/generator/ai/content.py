@@ -278,6 +278,8 @@ def _stream_batch(client, messages, progress, source_texts_by_id, cancel, emitte
                 continue
             buffer += chunk
             for raw in _iter_complete_objects(buffer):
+                if cancel is not None and cancel.is_set():
+                    break
                 sentence = _sentence_from_dict(raw)
                 if sentence is None:
                     continue

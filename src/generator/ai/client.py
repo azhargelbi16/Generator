@@ -13,6 +13,7 @@ from ..config import Config
 
 TIMEOUT = 120
 STREAM_TIMEOUT = 300
+STREAM_READ_TIMEOUT = 5
 PROBE_TIMEOUT = 8
 DEFAULT_MAX_TOKENS = 4096
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -182,9 +183,15 @@ class AIClient:
 
         response = None
         for attempt in range(MAX_RETRIES + 1):
+            if cancel is not None and cancel.is_set():
+                return
             try:
                 response = requests.post(
-                    url, headers=headers, json=payload, timeout=STREAM_TIMEOUT, stream=True
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=(STREAM_TIMEOUT, STREAM_READ_TIMEOUT),
+                    stream=True,
                 )
                 if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
                     backoff = RETRY_BACKOFFS[attempt]
@@ -218,6 +225,8 @@ class AIClient:
             except StreamError:
                 raise
             except Exception as exc:
+                if cancel is not None and cancel.is_set():
+                    return
                 raise StreamError(f"Gagal membuka streaming AI: {exc}") from exc
 
         if response is None:
@@ -260,9 +269,21 @@ class AIClient:
                 content = delta.get("content") or delta.get("reasoning_content")
                 if content:
                     yield content
+                if cancel is not None and cancel.is_set():
+                    return
         except StreamError:
             raise
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.RequestException,
+        ):
+            if cancel is not None and cancel.is_set():
+                return
+            raise StreamError("Streaming AI terputus karena batas waktu pembacaan.")
         except Exception as exc:
+            if cancel is not None and cancel.is_set():
+                return
             raise StreamError(f"Streaming AI terputus: {exc}") from exc
 
 
