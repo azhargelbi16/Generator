@@ -2,6 +2,8 @@ import pytest
 from tests.fixtures.scan import make_scanned_pdf
 from generator.sources import ocr
 
+pytestmark = pytest.mark.slow
+
 WORDS = ["laporan", "pertanian", "organik", "indonesia", "penelitian"]
 
 

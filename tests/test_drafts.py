@@ -1,5 +1,6 @@
 """Tes penyimpanan draf (Task 16)."""
 
+import os
 import pytest
 
 from generator import drafts
@@ -57,6 +58,7 @@ def test_draft_id_tidak_boleh_keluar_folder(tmp_path, monkeypatch):
 # --- Task 3.2: Enkripsi draf di disk -----------------------------------------
 
 
+@pytest.mark.skipif(os.name != "nt", reason="DPAPI hanya tersedia di Windows")
 def test_draft_baru_dienkripsi_tidak_memuat_teks_sumber_langsung(tmp_path, monkeypatch):
     monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
     state = drafts.DraftState(
