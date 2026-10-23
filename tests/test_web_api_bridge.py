@@ -395,3 +395,106 @@ def test_export_report_sukses_dan_os_startfile_dimock(tmp_path: Path, monkeypatc
         assert opened_files[0] == str(out_path)
 
     db.close()
+
+
+
+# --- Performa PDF Cepat & Auto-Generate Judul dari Jurnal --------------------
+
+
+def test_generate_title_from_sources_sukses_dan_fallback(tmp_path: Path, monkeypatch):
+    from generator.ai.client import AIClient
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    # 1. Error bila sumber kosong
+    err_res = bridge.generate_title_from_sources([])
+    assert "Tambahkan setidaknya satu sumber" in err_res.get("error", "")
+
+    sample_sources = [
+        {
+            "title": "Klasifikasi Kualitas Air dengan Random Forest",
+            "authors": [{"family": "Santoso"}],
+            "year": "2023",
+            "container": "Jurnal Informatika",
+            "text": "Penelitian klasifikasi kualitas air berbasis machine learning...",
+        },
+        {
+            "title": "Sensor IoT ESP32 untuk Pemantauan Kekeruhan",
+            "authors": [{"family": "Wijaya"}],
+            "year": "2024",
+            "container": "Jurnal Instrumentasi",
+            "text": "Penggunaan mikrokontroler ESP32 dalam pengujian air...",
+        },
+    ]
+
+    # 2. Sukses melalui AI
+    monkeypatch.setattr(
+        AIClient,
+        "chat",
+        lambda self, msgs, **kwargs: '"Implementasi IoT ESP32 dan Random Forest untuk Pemantauan Kualitas Air"',
+    )
+    res_ai = bridge.generate_title_from_sources(sample_sources)
+    assert res_ai.get("success") is True
+    assert res_ai.get("title") == "Implementasi IoT ESP32 dan Random Forest untuk Pemantauan Kualitas Air"
+
+    # 3. Sukses melalui Fallback Heuristik saat AI gagal
+    def boom(self, msgs, **kwargs):
+        raise RuntimeError("AI service down")
+
+    monkeypatch.setattr(AIClient, "chat", boom)
+    res_fallback = bridge.generate_title_from_sources(sample_sources)
+    assert res_fallback.get("success") is True
+    assert "Klasifikasi Kualitas Air dengan Random Forest" in res_fallback.get("title", "")
+    assert "Sensor IoT ESP32 untuk Pemantauan Kekeruhan" in res_fallback.get("title", "")
+
+    db.close()
+
+
+def test_extract_text_and_metadata_single_pass(tmp_path: Path):
+    from pypdf import PdfWriter
+    from generator.sources import pdf_reader
+
+    pdf_file = tmp_path / "sample.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({
+        "/Title": "Judul Paper Test",
+        "/Author": "Penulis Test",
+        "/CreationDate": "D:20240101000000",
+    })
+    with open(pdf_file, "wb") as f:
+        writer.write(f)
+
+    text, meta = pdf_reader.extract_text_and_metadata(pdf_file)
+    assert meta.get("title") == "Judul Paper Test"
+    assert meta.get("author") == "Penulis Test"
+
+
+def test_add_manual_source_fast_doi(tmp_path: Path, monkeypatch):
+    from generator.sources import doi_resolver
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+    bridge = ApiBridge(db, config_path=tmp_path / "config.json")
+
+    fake_record = {
+        "title": "Machine Learning in Agriculture",
+        "authors": [{"family": "Smith", "given": "John", "is_org": False, "abbrev": ""}],
+        "year": "2024",
+        "container": "Nature Agriculture",
+        "doi": "10.1038/s41598-024-12345-6",
+        "url": "https://doi.org/10.1038/s41598-024-12345-6",
+    }
+    monkeypatch.setattr(doi_resolver, "fetch_doi_metadata", lambda doi: fake_record)
+
+    text = "Referensi: Smith et al., 2024. DOI: 10.1038/s41598-024-12345-6. Teks kutipan lengkap..."
+    res = bridge.add_manual_source(text)
+    assert res.get("success") is True
+    rec = res.get("record", {})
+    assert rec.get("title") == "Machine Learning in Agriculture"
+    assert rec.get("doi") == "10.1038/s41598-024-12345-6"
+    assert rec.get("authors")[0]["family"] == "Smith"
+
+    db.close()

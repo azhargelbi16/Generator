@@ -184,6 +184,7 @@ export const api = {
   // Formats & Outlines
   getFormatVariants: () => callApi<FormatVariant[]>('get_format_variants'),
   suggestOutline: (topic: string, sources: SourceRecord[]) => callApi<{ success?: boolean; outline?: string[]; error?: string }>('suggest_outline', topic, sources),
+  generateTitleFromSources: (sources: SourceRecord[]) => callApi<{ success?: boolean; title?: string; error?: string }>('generate_title_from_sources', sources),
 
   // Drafts & Projects
   loadActiveDraft: () => callApi<{ has_draft: boolean; fields?: any; sources?: SourceRecord[]; sections?: Section[]; done?: string[] }>('load_active_draft'),

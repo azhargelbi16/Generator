@@ -564,18 +564,50 @@ class ApiBridge:
 
         pdf_path = Path(res[0])
         try:
-            text = pdf_reader.extract_text_or_ocr(pdf_path)
+            # Single-pass reading untuk performa optimal
+            text, doc_meta_raw = pdf_reader.extract_text_and_metadata(pdf_path)
+            doc_meta = normalize_metadata(doc_meta_raw)
         except Exception as e:
             return {"error": f"Gagal membaca PDF: {e}"}
 
-        doc_meta = normalize_metadata(pdf_reader.extract_metadata(pdf_path))
-        cl = AIClient(self._cfg)
-        try:
-            source = bibliography.extract_source(text, cl)
-        except (AIError, bibliography.BibliographyError):
-            source = Source([], "", "")
+        # Jalur Cepat 1: Resolusi DOI otomatis via CrossRef (~0.3 detik) bila DOI terdeteksi
+        doi_val = doc_meta.get("doi") or doi_resolver.extract_doi(text[:3000])
+        resolved_source = None
+        if doi_val:
+            try:
+                doi_record = doi_resolver.fetch_doi_metadata(doi_val)
+                if doi_record and doi_record.get("title"):
+                    authors = [
+                        Author(
+                            family=a.get("family", ""),
+                            given=a.get("given", ""),
+                            is_org=a.get("is_org", False),
+                            abbrev=a.get("abbrev", ""),
+                        )
+                        for a in doi_record.get("authors", [])
+                    ]
+                    resolved_source = Source(
+                        authors=authors,
+                        year=doi_record.get("year", ""),
+                        title=doi_record.get("title", ""),
+                        container=doi_record.get("container", ""),
+                        doi=doi_record.get("doi", doi_val),
+                        url=doi_record.get("url", ""),
+                    )
+            except Exception as exc:
+                log.info(f"Resolusi cepat DOI dilewati ({exc}), beralih ke ekstraksi metadata dokumen / AI.")
 
-        merged = bibliography.merge_metadata(source, doc_meta)
+        if resolved_source and resolved_source.title:
+            merged = resolved_source
+        else:
+            cl = AIClient(self._cfg)
+            try:
+                source = bibliography.extract_source(text, cl)
+            except (AIError, bibliography.BibliographyError):
+                source = Source([], "", "")
+
+            merged = bibliography.merge_metadata(source, doc_meta)
+
         if not merged.title:
             merged = Source(merged.authors, merged.year, pdf_path.stem, merged.container, merged.doi, merged.url)
 
@@ -607,15 +639,120 @@ class ApiBridge:
         if not text:
             return {"error": "Teks sumber tidak boleh kosong."}
 
-        cl = AIClient(self._cfg)
-        try:
-            source = bibliography.extract_source(text, cl)
-        except (AIError, bibliography.BibliographyError):
-            source = Source([], "", "Teks Manual")
+        # Jalur cepat DOI jika teks manual memuat DOI
+        doi_val = doi_resolver.extract_doi(text[:2000])
+        resolved_source = None
+        if doi_val:
+            try:
+                doi_record = doi_resolver.fetch_doi_metadata(doi_val)
+                if doi_record and doi_record.get("title"):
+                    authors = [
+                        Author(
+                            family=a.get("family", ""),
+                            given=a.get("given", ""),
+                            is_org=a.get("is_org", False),
+                            abbrev=a.get("abbrev", ""),
+                        )
+                        for a in doi_record.get("authors", [])
+                    ]
+                    resolved_source = Source(
+                        authors=authors,
+                        year=doi_record.get("year", ""),
+                        title=doi_record.get("title", ""),
+                        container=doi_record.get("container", ""),
+                        doi=doi_record.get("doi", doi_val),
+                        url=doi_record.get("url", ""),
+                    )
+            except Exception as exc:
+                log.info(f"Resolusi cepat DOI pada teks manual dilewati: {exc}")
 
-        merged = bibliography.merge_metadata(source, {})
+        if resolved_source and resolved_source.title:
+            merged = resolved_source
+        else:
+            cl = AIClient(self._cfg)
+            try:
+                source = bibliography.extract_source(text, cl)
+            except (AIError, bibliography.BibliographyError):
+                source = Source([], "", "Teks Manual")
+
+            merged = bibliography.merge_metadata(source, {})
+
         record = source_to_record(merged, text, "manual")
         return {"success": True, "record": record}
+
+    def generate_title_from_sources(self, sources_data: list[dict[str, Any]]) -> dict[str, Any]:
+        """Menyusun rekomendasi judul laporan akademik otomatis berdasarkan sumber-sumber jurnal."""
+        if not sources_data:
+            return {"error": "Tambahkan setidaknya satu sumber jurnal terlebih dahulu."}
+
+        source_summaries = []
+        for i, s in enumerate(sources_data, 1):
+            title = s.get("title") or s.get("file_name") or f"Sumber {i}"
+            authors = s.get("authors") or []
+            auth_str = ", ".join(a.get("family", "") for a in authors if a.get("family")) or "Peneliti"
+            year = s.get("year", "")
+            container = s.get("container", "")
+            raw_text = s.get("text", "")
+            snippet = " ".join(raw_text[:400].split())
+            source_summaries.append(
+                f"[{i}] Judul Jurnal: {title}\n"
+                f"    Penulis: {auth_str} ({year})\n"
+                f"    Jurnal: {container}\n"
+                f"    Fokus/Abstrak: {snippet}..."
+            )
+
+        sources_text = "\n\n".join(source_summaries)
+
+        system_msg = (
+            "Anda adalah dosen pembimbing akademik senior dan pakar penulisan karya ilmiah Indonesia. "
+            "Tugas Anda adalah merumuskan 1 (SATU) judul laporan akademik, skripsi, makalah penelitian, "
+            "atau tugas akhir yang komprehensif, menarik, formal, dan baku dalam Bahasa Indonesia "
+            "berdasarkan tema dan sintesis dari sumber-sumber jurnal yang diberikan.\n\n"
+            "Aturan pembuatan judul:\n"
+            "1. Judul harus mencerminkan sintesis atau fokus penelitian dari jurnal-jurnal tersebut.\n"
+            "2. Gunakan gaya bahasa akademik baku (misal: 'Analisis...', 'Implementasi...', 'Kajian Komparatif...', 'Pengaruh...', 'Rancang Bangun...', 'Studi Evaluasi...').\n"
+            "3. Panjang judul antara 8 hingga 18 kata.\n"
+            "4. Jangan gunakan tanda petik atau awalan seperti 'Judul:' atau 'Berikut adalah judul:'.\n"
+            "5. Kembalikan HANYA teks judul laporan tersebut tanpa penjelasan tambahan."
+        )
+
+        user_msg = (
+            f"Berikut adalah daftar sumber jurnal referensi yang telah ditambahkan:\n\n"
+            f"{sources_text}\n\n"
+            f"Rumuskan 1 judul laporan akademik terbaik berdasarkan sumber-sumber di atas:"
+        )
+
+        cl = AIClient(self._cfg)
+        try:
+            reply = cl.chat([
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ])
+            candidate = reply.strip().strip("\"'`").replace("\n", " ")
+            for prefix in ("Judul:", "Judul Laporan:", "Judul Penelitian:", "Judul Skripsi:"):
+                if candidate.lower().startswith(prefix.lower()):
+                    candidate = candidate[len(prefix):].strip()
+
+            if candidate:
+                return {"success": True, "title": candidate}
+        except Exception as exc:
+            log.warning(f"Gagal menghasilkan judul via AI: {exc}")
+
+        # Fallback heuristik cerdas bila AI tidak aktif / offline
+        first_title = sources_data[0].get("title", "").strip()
+        if not first_title or first_title.lower() == "tanpa judul":
+            first_title = "Topik Terpilih Berdasarkan Studi Referensi Terkini"
+
+        if len(sources_data) == 1:
+            fallback_title = f"Kajian Komprehensif dan Tinjauan Literatur: {first_title}"
+        else:
+            second_title = sources_data[1].get("title", "").strip()
+            if second_title:
+                fallback_title = f"Studi Komparatif dan Analisis: {first_title} dan {second_title}"
+            else:
+                fallback_title = f"Analisis Multiperspektif dan Sintesis Literatur: {first_title}"
+
+        return {"success": True, "title": fallback_title}
 
     def resolve_doi_source(self, doi: str) -> dict[str, Any]:
         doi = doi.strip()

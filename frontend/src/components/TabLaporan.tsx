@@ -18,7 +18,8 @@ import {
   Search,
   Hash,
   Clock,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { 
   api, 
@@ -64,6 +65,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
   const [manualTextInput, setManualTextInput] = useState('');
   const [loadingSource, setLoadingSource] = useState(false);
   const [suggestingOutline, setSuggestingOutline] = useState(false);
+  const [generatingTitle, setGeneratingTitle] = useState(false);
 
   // DOI Resolver State
   const [doiModal, setDoiModal] = useState(false);
@@ -164,16 +166,40 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
   // Add Sources Handlers
   const handleAddPdf = async () => {
     setLoadingSource(true);
+    toast.info('Membuka dialog dan memproses berkas PDF...');
     try {
       const res = await api.pickPdfSource();
       if (res?.success && res.record) {
         setSources((prev) => [...prev, res.record!]);
-        toast.success('Sumber PDF berhasil ditambahkan.');
+        toast.success(`Sumber PDF "${res.record.title || 'Dokumen'}" berhasil ditambahkan.`);
       } else if (res?.error) {
         toast.error(res.error);
       }
+    } catch (err: any) {
+      toast.error(`Gagal membaca PDF: ${err?.message || err}`);
     } finally {
       setLoadingSource(false);
+    }
+  };
+
+  const handleAutoGenerateTitle = async () => {
+    if (sources.length === 0) {
+      toast.error('Tambahkan setidaknya satu sumber jurnal terlebih dahulu di panel kiri.');
+      return;
+    }
+    setGeneratingTitle(true);
+    try {
+      const res = await api.generateTitleFromSources(sources);
+      if (res?.success && res.title) {
+        setTopic(res.title);
+        toast.success('Judul laporan berhasil disusun dari sumber jurnal!');
+      } else {
+        toast.error(res?.error || 'Gagal merumuskan judul otomatis.');
+      }
+    } catch (err: any) {
+      toast.error(`Terjadi kesalahan: ${err?.message || err}`);
+    } finally {
+      setGeneratingTitle(false);
     }
   };
 
@@ -492,6 +518,12 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
 
               {/* Source List */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {loadingSource && (
+                  <div className="p-3 mb-2 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 text-xs flex items-center space-x-2 animate-pulse">
+                    <Loader2 className="w-4 h-4 animate-spin text-brand-600 shrink-0" />
+                    <span>Sedang memproses sumber & mengekstrak data...</span>
+                  </div>
+                )}
                 {sources.length === 0 ? (
                   <div className="text-center py-12 text-slate-400 text-xs">
                     Belum ada sumber referensi.<br />Tambahkan PDF atau tautan web di atas.
@@ -623,9 +655,38 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete }) =>
             {/* Judul Laporan */}
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                  Judul Laporan Akademik
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                    Judul Laporan Akademik
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateTitle}
+                    disabled={generatingTitle || sources.length === 0}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border ${
+                      sources.length === 0
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-70'
+                        : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 shadow-sm active:scale-95'
+                    }`}
+                    title={
+                      sources.length === 0
+                        ? 'Tambahkan sumber jurnal di panel kiri untuk merumuskan judul otomatis'
+                        : 'Rumuskan rekomendasi judul laporan akademik otomatis berdasarkan jurnal referensi'
+                    }
+                  >
+                    {generatingTitle ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                        <span>Menyusun Judul AI...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Saran Judul dari Jurnal (AI)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={topic}

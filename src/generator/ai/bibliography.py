@@ -9,8 +9,8 @@ from ..textutil import repair_mojibake
 from . import prompts
 from .citation import Author, Source
 
-_DEFAULT_MAX_CHARS = 6000
-_DEFAULT_TAIL_CHARS = 500
+_DEFAULT_MAX_CHARS = 3000
+_DEFAULT_TAIL_CHARS = 400
 _METADATA_KEYS = ("year", "title", "container", "doi", "url")
 
 
