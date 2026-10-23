@@ -97,3 +97,34 @@ def test_save_gagal_tidak_merusak_config_lama(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == [p]
 
 
+
+
+
+# --- Task 3.4: Batasi akses berkas sensitif ----------------------------------
+
+
+def test_save_config_memanggil_fungsi_pembatas_izin(tmp_path, monkeypatch):
+    from pathlib import Path
+    dipanggil = []
+
+    def mock_restrict(path):
+        dipanggil.append(Path(path))
+        return True
+
+    monkeypatch.setattr(config, "restrict_file_permissions", mock_restrict)
+
+    p = tmp_path / "config.json"
+    cfg = config.Config(ai_model="test-secure")
+    config.save_config(cfg, p)
+
+    assert len(dipanggil) == 1
+    assert dipanggil[0] == p
+
+
+def test_restrict_file_permissions_berhasil_atau_graceful(tmp_path):
+    p = tmp_path / "test_secret.json"
+    p.write_text("{}", encoding="utf-8")
+
+    res = config.restrict_file_permissions(p)
+    assert isinstance(res, bool)
+    assert res is True
