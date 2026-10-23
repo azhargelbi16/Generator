@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 import requests
@@ -11,7 +12,12 @@ import requests
 from ..config import Config
 
 TIMEOUT = 120
+STREAM_TIMEOUT = 300
 PROBE_TIMEOUT = 8
+DEFAULT_MAX_TOKENS = 4096
+RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 3
+RETRY_BACKOFFS = (2.0, 4.0, 8.0)
 
 log = logging.getLogger("generator.ai.client")
 
@@ -22,6 +28,28 @@ class AIError(Exception):
 
 class StreamError(AIError):
     """Streaming tidak didukung server atau terputus di tengah jalan."""
+
+
+def _parse_retry_after(header_val: str | None, default_backoff: float) -> float:
+    """Hormati header Retry-After (detik atau HTTP date), fallback ke backoff bawaan."""
+    if not header_val:
+        return default_backoff
+    header_val = header_val.strip()
+    try:
+        val = float(header_val)
+        return max(0.0, val)
+    except ValueError:
+        pass
+    try:
+        from datetime import datetime, timezone
+        from email.utils import parsedate_to_datetime
+
+        dt = parsedate_to_datetime(header_val)
+        now = datetime.now(timezone.utc)
+        diff = (dt - now).total_seconds()
+        return max(0.0, diff)
+    except Exception:
+        return default_backoff
 
 
 def _parse_body(text: str) -> dict:
@@ -49,36 +77,83 @@ class AIClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
 
-    def chat(self, messages: list[dict], json_mode: bool = False) -> str:
+    def chat(
+        self,
+        messages: list[dict],
+        json_mode: bool = False,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> str:
         url = f"{self.cfg.ai_base_url.rstrip('/')}/chat/completions"
         payload: dict[str, Any] = {
             "model": self.cfg.ai_model,
             "messages": messages,
             "temperature": self.cfg.ai_temperature,
+            "max_tokens": max_tokens,
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         headers = _get_headers(self.cfg)
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
-            if response.status_code >= 400:
+
+        data = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+                if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
+                    backoff = RETRY_BACKOFFS[attempt]
+                    retry_after = (
+                        response.headers.get("Retry-After")
+                        if hasattr(response, "headers")
+                        else None
+                    )
+                    sleep_time = _parse_retry_after(retry_after, backoff)
+                    log.warning(
+                        "AI HTTP %d pada percobaan %d/%d, mencoba ulang dalam %.1fs...",
+                        response.status_code,
+                        attempt + 1,
+                        MAX_RETRIES,
+                        sleep_time,
+                    )
+                    time.sleep(sleep_time)
+                    continue
+
+                if response.status_code >= 400:
+                    raise AIError(
+                        f"Layanan AI menolak permintaan (HTTP {response.status_code}): {response.text[:150]}"
+                    )
+                response.raise_for_status()
+                data = _parse_body(response.text)
+                break
+            except requests.exceptions.Timeout as exc:
+                if attempt < MAX_RETRIES:
+                    backoff = RETRY_BACKOFFS[attempt]
+                    log.warning(
+                        "AI timeout pada percobaan %d/%d, mencoba ulang dalam %.1fs...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        backoff,
+                    )
+                    time.sleep(backoff)
+                    continue
                 raise AIError(
-                    f"Layanan AI menolak permintaan (HTTP {response.status_code}): {response.text[:150]}"
-                )
-            response.raise_for_status()
-            data = _parse_body(response.text)
-        except AIError:
-            raise
-        except ValueError as exc:
-            raise AIError(f"Format respons AI tidak dikenal: {exc}") from exc
-        except Exception as exc:
-            raise AIError(f"Gagal menghubungi layanan AI: {exc}") from exc
+                    f"Gagal menghubungi layanan AI (timeout setelah {MAX_RETRIES} retry): {exc}"
+                ) from exc
+            except AIError:
+                raise
+            except ValueError as exc:
+                raise AIError(f"Format respons AI tidak dikenal: {exc}") from exc
+            except Exception as exc:
+                raise AIError(f"Gagal menghubungi layanan AI: {exc}") from exc
 
         choices = data.get("choices") if isinstance(data, dict) else None
         if not choices:
             raise AIError("Respons AI tidak memuat pilihan jawaban (choices).")
+        first_choice = choices[0] if isinstance(choices, list) and choices else None
+        if not isinstance(first_choice, dict):
+            raise AIError("Format pilihan respons AI tidak valid.")
+        if first_choice.get("finish_reason") == "length":
+            raise AIError("Respons AI terpotong karena batas token (finish_reason=length).")
         try:
-            msg = choices[0]["message"]
+            msg = first_choice["message"]
             content = msg.get("content")
             if not content and "reasoning_content" in msg:
                 content = msg["reasoning_content"]
@@ -86,27 +161,68 @@ class AIClient:
         except (KeyError, IndexError, TypeError) as exc:
             raise AIError("Format respons AI tidak dikenal.") from exc
 
-    def chat_stream(self, messages: list[dict], json_mode: bool = False, cancel=None):
+    def chat_stream(
+        self,
+        messages: list[dict],
+        json_mode: bool = False,
+        cancel=None,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+    ):
         url = f"{self.cfg.ai_base_url.rstrip('/')}/chat/completions"
         payload: dict[str, Any] = {
             "model": self.cfg.ai_model,
             "messages": messages,
             "temperature": self.cfg.ai_temperature,
             "stream": True,
+            "max_tokens": max_tokens,
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         headers = _get_headers(self.cfg)
-        try:
-            response = requests.post(
-                url, headers=headers, json=payload, timeout=TIMEOUT, stream=True
-            )
-        except Exception as exc:
-            raise StreamError(f"Gagal membuka streaming AI: {exc}") from exc
-        if response.status_code >= 400:
-            raise StreamError(
-                f"Layanan AI menolak streaming (HTTP {response.status_code})."
-            )
+
+        response = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = requests.post(
+                    url, headers=headers, json=payload, timeout=STREAM_TIMEOUT, stream=True
+                )
+                if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
+                    backoff = RETRY_BACKOFFS[attempt]
+                    retry_after = (
+                        response.headers.get("Retry-After")
+                        if hasattr(response, "headers")
+                        else None
+                    )
+                    sleep_time = _parse_retry_after(retry_after, backoff)
+                    log.warning(
+                        "AI streaming HTTP %d pada percobaan %d/%d, mencoba ulang dalam %.1fs...",
+                        response.status_code,
+                        attempt + 1,
+                        MAX_RETRIES,
+                        sleep_time,
+                    )
+                    time.sleep(sleep_time)
+                    continue
+
+                if response.status_code >= 400:
+                    raise StreamError(
+                        f"Layanan AI menolak streaming (HTTP {response.status_code})."
+                    )
+                break
+            except requests.exceptions.Timeout as exc:
+                if attempt < MAX_RETRIES:
+                    backoff = RETRY_BACKOFFS[attempt]
+                    time.sleep(backoff)
+                    continue
+                raise StreamError(f"Gagal membuka streaming AI (timeout): {exc}") from exc
+            except StreamError:
+                raise
+            except Exception as exc:
+                raise StreamError(f"Gagal membuka streaming AI: {exc}") from exc
+
+        if response is None:
+            raise StreamError("Tidak ada respons dari layanan AI streaming.")
+
         try:
             for raw in response.iter_lines():
                 if cancel is not None and cancel.is_set():
@@ -135,7 +251,12 @@ class AIClient:
                 choices = event.get("choices") or []
                 if not choices:
                     continue
-                delta = choices[0].get("delta") or {}
+                first_choice = choices[0]
+                if isinstance(first_choice, dict) and first_choice.get("finish_reason") == "length":
+                    raise StreamError(
+                        "Streaming AI terpotong karena batas token (finish_reason=length)."
+                    )
+                delta = first_choice.get("delta") or {}
                 content = delta.get("content") or delta.get("reasoning_content")
                 if content:
                     yield content

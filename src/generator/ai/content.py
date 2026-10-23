@@ -12,7 +12,7 @@ from ..sources.chunking import chunk_text
 from ..textutil import repair_mojibake
 from .. import format_spec
 from . import prompts
-from .client import StreamError
+from .client import StreamError, AIError
 
 _logger = logging.getLogger(__name__)
 
@@ -440,10 +440,14 @@ def generate_sections(
                 _merge_sections(sections, _partial_sections(collected))
             break
         if not use_stream or data is None:
-            reply = client.chat(messages, json_mode=True)
-            data = _first_json_object(reply)
-            if data is not None and progress is not None:
-                _reveal_sentences(data, progress, source_texts_by_id, emitted)
+            try:
+                reply = client.chat(messages, json_mode=True)
+                data = _first_json_object(reply)
+                if data is not None and progress is not None:
+                    _reveal_sentences(data, progress, source_texts_by_id, emitted)
+            except AIError as exc:
+                _logger.warning("Batch %d gagal diproses oleh AI: %s", number, exc)
+                data = None
         if data is None:
             gagal += 1
             continue
