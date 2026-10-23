@@ -15,6 +15,7 @@ DB_PATH = DATA_DIR / "app.db"
 LOGOS_DIR = DATA_DIR / "logos"
 TEMPLATES_DIR = DATA_DIR / "templates"
 DRAFTS_DIR = DATA_DIR / "drafts"
+BACKUP_DIR = DATA_DIR / "backup"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 CONFIG_PATH = DATA_DIR / "config.json"
 LOG_PATH = DATA_DIR / "app.log"
@@ -22,7 +23,7 @@ LOG_PATH = DATA_DIR / "app.log"
 
 def ensure_dirs() -> None:
     """Buat semua folder data. Lempar `PathsError` bila gagal."""
-    for folder in (DATA_DIR, LOGOS_DIR, TEMPLATES_DIR, DRAFTS_DIR, OUTPUT_DIR):
+    for folder in (DATA_DIR, LOGOS_DIR, TEMPLATES_DIR, DRAFTS_DIR, OUTPUT_DIR, BACKUP_DIR):
         try:
             folder.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -31,12 +32,13 @@ def ensure_dirs() -> None:
 
 def set_data_dir(base: Path) -> None:
     """Pindahkan semua path data ke `base` (dipakai saat folder utama tak bisa ditulis)."""
-    global DATA_DIR, DB_PATH, LOGOS_DIR, TEMPLATES_DIR, DRAFTS_DIR, CONFIG_PATH, LOG_PATH
+    global DATA_DIR, DB_PATH, LOGOS_DIR, TEMPLATES_DIR, DRAFTS_DIR, BACKUP_DIR, CONFIG_PATH, LOG_PATH
     base = Path(base)
     DATA_DIR = base
     DB_PATH = base / "app.db"
     LOGOS_DIR = base / "logos"
     TEMPLATES_DIR = base / "templates"
     DRAFTS_DIR = base / "drafts"
+    BACKUP_DIR = base / "backup"
     CONFIG_PATH = base / "config.json"
     LOG_PATH = base / "app.log"

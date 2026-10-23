@@ -3,11 +3,72 @@
 from __future__ import annotations
 
 import sqlite3
+import shutil
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-SCHEMA_VERSION = 1
+from . import paths
+
+SCHEMA_VERSION = 2
+
+
+def _migration_1_to_2(conn: sqlite3.Connection) -> None:
+    """Migrasi 1 -> 2: Buat indeks pencarian untuk template dan dosen."""
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_template_nama ON template(nama)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dosen_nama ON dosen(nama)")
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    2: _migration_1_to_2,
+}
+
+
+def backup_database(
+    db_path: Path | None = None,
+    backup_dir: Path | None = None,
+    max_retention: int = 10,
+) -> Path | None:
+    """Salin app.db ke data/backup/app-YYYYMMDD-HHMMSS.db sebelum migrasi.
+
+    Retensi maksimal `max_retention` (bawaan 10) berkas backup.
+    """
+    if db_path is None:
+        db_path = paths.DB_PATH
+    db_path = Path(db_path)
+    if not db_path.is_file():
+        return None
+
+    if backup_dir is None:
+        backup_dir = paths.DATA_DIR / "backup"
+    backup_dir = Path(backup_dir)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_file = backup_dir / f"app-{timestamp}.db"
+    counter = 1
+    while backup_file.exists():
+        backup_file = backup_dir / f"app-{timestamp}-{counter}.db"
+        counter += 1
+
+    shutil.copy2(db_path, backup_file)
+    _enforce_backup_retention(backup_dir, max_retention=max_retention)
+    return backup_file
+
+
+def _enforce_backup_retention(backup_dir: Path, max_retention: int = 10) -> None:
+    """Hapus berkas backup terlama bila jumlah berkas melebihi batas retensi."""
+    backups = sorted(
+        backup_dir.glob("app-*.db"),
+        key=lambda p: (p.stat().st_mtime, p.name),
+    )
+    while len(backups) > max_retention:
+        oldest = backups.pop(0)
+        try:
+            oldest.unlink()
+        except OSError:
+            pass
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS profil_mahasiswa (
@@ -90,16 +151,50 @@ class Database:
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
-    def init_schema(self) -> None:
-        cur = self.conn.executescript(_SCHEMA)
-        row = cur.execute("SELECT COUNT(*) AS n FROM schema_version").fetchone()
-        if row["n"] == 0:
-            cur.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
-        self.conn.commit()
+    def init_schema(self, backup_dir: Path | None = None) -> None:
+        """Inisialisasi tabel dasar dan jalankan migrasi berurutan bila diperlukan."""
+        current_v = self.schema_version()
+        has_tables = bool(
+            self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='profil_mahasiswa'"
+            ).fetchone()
+        )
+        if not has_tables:
+            self.conn.executescript(_SCHEMA)
+            self.conn.execute("INSERT INTO schema_version (version) VALUES (1)")
+            self.conn.commit()
+            current_v = 1
+
+        if current_v < SCHEMA_VERSION:
+            self.run_migrations(target_version=SCHEMA_VERSION, backup_dir=backup_dir)
 
     def schema_version(self) -> int:
-        row = self.conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
-        return int(row["v"] or 0)
+        try:
+            row = self.conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+            if row and row["v"] is not None:
+                return int(row["v"])
+        except sqlite3.OperationalError:
+            pass
+        return 0
+
+    def run_migrations(
+        self, target_version: int = SCHEMA_VERSION, backup_dir: Path | None = None
+    ) -> None:
+        """Bandingkan versi, buat backup, dan jalankan migrasi berurutan."""
+        current_v = self.schema_version()
+        if current_v >= target_version:
+            return
+
+        # Backup database sebelum migrasi
+        self.conn.commit()
+        backup_database(self.db_path, backup_dir=backup_dir)
+
+        self.conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+        for v in range(current_v + 1, target_version + 1):
+            if v in MIGRATIONS:
+                MIGRATIONS[v](self.conn)
+            self.conn.execute("INSERT INTO schema_version (version) VALUES (?)", (v,))
+            self.conn.commit()
 
     def close(self) -> None:
         self.conn.close()
