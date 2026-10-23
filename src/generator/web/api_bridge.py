@@ -1017,19 +1017,26 @@ class ApiBridge:
         label_forms = report.label_forms_for(sources, cited, style=style)
         refs = report.references_for(sources, cited)
 
-        judul = fields.get("JUDUL", "Laporan")
+        normalized_fields = dict(fields)
+        for k, v in list(fields.items()):
+            if not k.startswith("{{") and not k.endswith("}}"):
+                normalized_fields.setdefault(f"{{{{{k}}}}}", v)
+            elif k.startswith("{{") and k.endswith("}}"):
+                normalized_fields.setdefault(k[2:-2].strip(), v)
+
+        judul = normalized_fields.get("JUDUL", "Laporan")
         filename = report.sanitize_filename(judul)
         paths.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = paths.OUTPUT_DIR / f"{filename}.docx"
 
-        logo_path = fields.get("LOGO_PATH")
+        logo_path = normalized_fields.get("LOGO_PATH")
         if logo_path and not Path(logo_path).is_file():
             logo_path = None
 
         try:
             final_path = renderer.render_report(
                 template_path=Path(tpl.path),
-                fields=fields,
+                fields=normalized_fields,
                 sections=sections,
                 references=refs,
                 logo_path=Path(logo_path) if logo_path else None,

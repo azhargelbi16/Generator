@@ -303,3 +303,95 @@ def test_export_report_tanpa_template_id_gagal(tmp_path: Path):
     assert res2.get("error") == "Pilih template terlebih dahulu"
 
     db.close()
+
+
+
+# --- Task 4.3: Tes jalur ekspor sukses ---------------------------------------
+
+
+def test_export_report_sukses_dan_os_startfile_dimock(tmp_path: Path, monkeypatch):
+    import os
+    import docx
+    from generator.web import api_bridge
+    from generator import paths
+
+    # Set direktori data dan output terisolasi
+    paths.set_data_dir(tmp_path)
+    paths.OUTPUT_DIR = tmp_path / "output"
+    paths.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    db_file = tmp_path / "test.db"
+    db = database.Database(db_file)
+    db.init_schema()
+
+    bridge = api_bridge.ApiBridge(db, config_path=tmp_path / "config.json")
+
+    # 1. Buat template akademik resmi
+    tpl_res = bridge.create_default_template({"font_name": "Times New Roman", "margin_preset": "4433"})
+    assert tpl_res.get("success") is True
+    tpls = bridge.list_templates()
+    assert len(tpls) >= 1
+    tpl_id = tpls[0]["id"]
+
+    # 2. Mock os.startfile
+    opened_files = []
+    monkeypatch.setattr(api_bridge.os, "startfile", lambda p: opened_files.append(str(p)), raising=False)
+
+    # 3. Ekspor laporan dengan data lengkap
+    state = {
+        "template_id": tpl_id,
+        "fields": {
+            "JUDUL": "Laporan Kemajuan Pertanian Organik",
+            "NAMA": "Budi Santoso",
+            "NIM": "2024001",
+            "PRODI": "Teknologi Pertanian",
+        },
+        "sources": [
+            {
+                "authors": [{"family": "Wijaya", "given": "Ani"}],
+                "year": "2021",
+                "title": "Studi Pertanian Organik",
+                "container": "Jurnal Agronomi",
+            }
+        ],
+        "sections": [
+            {
+                "level": 1,
+                "title": "Pendahuluan",
+                "paragraphs": [
+                    {
+                        "sentences": [
+                            {
+                                "text": "Pertanian organik terus berkembang pesat di Indonesia.",
+                                "quote": "berkembang pesat",
+                                "source_ids": [0],
+                                "is_factual": True,
+                                "citation": True,
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+        "open_word": True,
+    }
+
+    res = bridge.export_report(state)
+    assert res.get("success") is True, res.get("error")
+    out_path = Path(res["output_path"])
+
+    # 4. Pastikan berkas DOCX ada di disk
+    assert out_path.is_file()
+
+    # 5. Pastikan berkas bisa dibuka python-docx dan memuat teks yang sesuai
+    doc = docx.Document(str(out_path))
+    doc_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Laporan Kemajuan Pertanian Organik" in doc_text
+    assert "Pertanian organik terus berkembang pesat di Indonesia" in doc_text
+
+    # 6. Pastikan os.startfile di-mock dan dipanggil
+    if os.name == "nt":
+        assert len(opened_files) == 1
+        assert opened_files[0] == str(out_path)
+
+    db.close()
