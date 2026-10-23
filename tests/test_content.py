@@ -427,3 +427,82 @@ def test_batch_dengan_sumber_berbeda_hanya_meminta_bab_relevan_dan_urutan_akhir_
     # 2. Urutan akhir hasil tetap sesuai urutan outline asli ("Pendahuluan" sebelum "Metode Penelitian")
     titles = [s.title for s in sections]
     assert titles == ["Pendahuluan", "Metode Penelitian"]
+
+
+
+# --- Task 2.5: Merge tanpa duplikat semantik ---------------------------------
+
+
+def test_merge_sections_membuang_dua_parafrase_ringan():
+    from generator.ai.content import _merge_sections, Section, Paragraph, Sentence
+
+    s1 = Sentence("Pengembangan sistem pertanian organik di Indonesia menunjukkan peningkatan yang signifikan.", "q", [0])
+    s2 = Sentence("Pengembangan sistem pertanian organik di Indonesia menunjukkan peningkatan yang sangat signifikan.", "q", [0])
+
+    existing = [Section(1, "Pendahuluan", [Paragraph([s1])])]
+    incoming = [Section(1, "Pendahuluan", [Paragraph([s2])])]
+
+    _merge_sections(existing, incoming)
+
+    # Dua parafrase ringan hanya menyisakan satu kalimat
+    all_sents = [s.text for s in existing[0].paragraphs[0].sentences]
+    assert len(all_sents) == 1
+    assert all_sents[0] == s1.text
+
+
+def test_merge_sections_mempertahankan_parafrase_dengan_sitasi_berbeda():
+    from generator.ai.content import _merge_sections, Section, Paragraph, Sentence
+
+    s1 = Sentence("Pertanian organik memberikan dampak positif bagi kesuburan tanah.", "q1", [0])
+    s2 = Sentence("Pertanian organik memberi dampak positif bagi kesuburan tanah.", "q2", [1])
+
+    existing = [Section(1, "Pendahuluan", [Paragraph([s1])])]
+    incoming = [Section(1, "Pendahuluan", [Paragraph([s2])])]
+
+    _merge_sections(existing, incoming)
+
+    # Jangan buang bila sitasi berbeda
+    all_sents = [s for p in existing[0].paragraphs for s in p.sentences]
+    assert len(all_sents) == 2
+    assert all_sents[0].source_ids == [0]
+    assert all_sents[1].source_ids == [1]
+
+
+def test_generate_sections_dedup_parafrase_ringan():
+    from generator.ai.content import generate_sections
+    import json
+
+    reply1 = json.dumps({
+        "sections": [{
+            "level": 1,
+            "title": "Pendahuluan",
+            "paragraphs": [{"sentences": [
+                {"text": "Penerapan pertanian ramah lingkungan semakin diminati oleh para petani.", "quote": "q", "source_ids": [0], "is_factual": True}
+            ]}]
+        }]
+    })
+    reply2 = json.dumps({
+        "sections": [{
+            "level": 1,
+            "title": "Pendahuluan",
+            "paragraphs": [{"sentences": [
+                {"text": "Penerapan pertanian ramah lingkungan kini semakin diminati oleh para petani.", "quote": "q", "source_ids": [0], "is_factual": True}
+            ]}]
+        }]
+    })
+
+    client = FakeClient([reply1, reply2])
+    sources = [Source([Author("Santoso", "Budi")], "2020", "T", "J")]
+    long_text = "kalimat sumber " * 1000
+
+    sections = generate_sections(
+        "tema",
+        ["Pendahuluan"],
+        sources,
+        [long_text],
+        client,
+        max_prompt_chars=500,
+    )
+
+    sentences = [s for p in sections[0].paragraphs for s in p.sentences]
+    assert len(sentences) == 1

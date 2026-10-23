@@ -176,15 +176,34 @@ def _batches(chunk_refs: list[tuple[int, str]], max_chars: int):
         yield batch
 
 
+def _token_similarity(text_a: str, text_b: str) -> float:
+    """Hitung kemiripan token antara dua teks."""
+    tokens_a = set(re.findall(r"\w+", text_a.lower()))
+    tokens_b = set(re.findall(r"\w+", text_b.lower()))
+    if not tokens_a and not tokens_b:
+        return 1.0
+    if not tokens_a or not tokens_b:
+        return 0.0
+    intersection = tokens_a & tokens_b
+    union = tokens_a | tokens_b
+    jaccard = len(intersection) / len(union)
+    dice = (2.0 * len(intersection)) / (len(tokens_a) + len(tokens_b))
+    return max(jaccard, dice)
+
+
 def _merge_sections(existing: list[Section], incoming: list[Section]) -> None:
-    """Gabung bab per judul dan buang kalimat duplikat (dibandingkan setelah normalisasi)."""
+    """Gabung bab per judul dan buang kalimat duplikat/parafrase (kemiripan token >= 0.85).
+
+    Jangan buang kalimat bila sitasinya berbeda.
+    """
     by_title = {_normalize(section.title): section for section in existing}
-    seen = {
-        _normalize(sentence.text)
+    all_sentences: list[Sentence] = [
+        sentence
         for section in existing
         for paragraph in section.paragraphs
         for sentence in paragraph.sentences
-    }
+    ]
+
     for section in incoming:
         key = _normalize(section.title)
         target = by_title.get(key)
@@ -195,10 +214,16 @@ def _merge_sections(existing: list[Section], incoming: list[Section]) -> None:
         for paragraph in section.paragraphs:
             fresh = []
             for sentence in paragraph.sentences:
-                normalized = _normalize(sentence.text)
-                if normalized in seen:
+                is_duplicate = False
+                for ex in all_sentences:
+                    sim = _token_similarity(sentence.text, ex.text)
+                    if sim >= 0.85:
+                        if set(sentence.source_ids) == set(ex.source_ids):
+                            is_duplicate = True
+                            break
+                if is_duplicate:
                     continue
-                seen.add(normalized)
+                all_sentences.append(sentence)
                 fresh.append(sentence)
             if fresh:
                 target.paragraphs.append(Paragraph(fresh))
