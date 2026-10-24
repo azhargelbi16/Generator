@@ -6,6 +6,10 @@ title Generator Laporan
 rem === JALUR CEPAT: Jika virtual environment dan dependensi sudah siap, langsung jalankan ===
 if exist ".venv\Scripts\python.exe" if exist ".venv\.deps_ok" (
     set "PYTHONPATH=%~dp0src"
+    if exist ".venv\Scripts\pythonw.exe" (
+        start "" "%~dp0.venv\Scripts\pythonw.exe" -m generator.web.app
+        exit /b 0
+    )
     "%~dp0.venv\Scripts\python.exe" -m generator.web.app
     if errorlevel 1 pause
     exit /b 0
@@ -56,6 +60,11 @@ if not exist ".venv\.deps_ok" (
 rem 4) Jalankan aplikasi Webview Desktop Modern
 echo [3/3] Menjalankan Generator Laporan Modern ...
 set "PYTHONPATH=%~dp0src"
+if exist "%~dp0.venv\Scripts\pythonw.exe" (
+    start "" "%~dp0.venv\Scripts\pythonw.exe" -m generator.web.app
+    endlocal
+    exit /b 0
+)
 "%VPY%" -m generator.web.app
 if errorlevel 1 pause
 endlocal

@@ -47,3 +47,4 @@ fi
 echo "[3/3] Menjalankan Generator Laporan Webview Desktop ..."
 export PYTHONPATH="$DIR/src"
 exec "$VPY" -m generator.web.app
+

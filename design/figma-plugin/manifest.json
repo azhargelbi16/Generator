@@ -1,0 +1,8 @@
+{
+  "name": "Generator Laporan — UI Redesign",
+  "id": "generator-laporan-redesign-v1",
+  "api": "1.0.0",
+  "editorType": ["figma"],
+  "main": "code.js",
+  "documentAccess": "dynamic-page"
+}

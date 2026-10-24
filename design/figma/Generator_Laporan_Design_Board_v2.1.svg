@@ -1,0 +1,552 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="2520" viewBox="0 0 2560 2520">
+<title>Generator Laporan &#8212; Design System v2.1</title>
+<defs><linearGradient id="paperFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF8DE" stop-opacity="0"/><stop offset="1" stop-color="#FFF8DE" stop-opacity="1"/></linearGradient><clipPath id="clip-frame-colors"><rect x="60" y="200" width="1240" height="560" rx="8"/></clipPath><clipPath id="clip-frame-typography"><rect x="1340" y="200" width="1160" height="560" rx="8"/></clipPath><clipPath id="clip-frame-buttons"><rect x="60" y="800" width="1240" height="520" rx="8"/></clipPath><clipPath id="clip-frame-formsstatus"><rect x="1340" y="800" width="1160" height="520" rx="8"/></clipPath><clipPath id="clip-toast"><rect x="1370" y="1198" width="420" height="46" rx="6"/></clipPath><clipPath id="clip-frame-reviewcanvas"><rect x="60" y="1360" width="2440" height="660" rx="8"/></clipPath><clipPath id="clip-rail"><rect x="90" y="1452" width="230" height="520" rx="3"/></clipPath><clipPath id="clip-inspector"><rect x="1154" y="1452" width="360" height="520" rx="3"/></clipPath><clipPath id="clip-frame-navigation"><rect x="60" y="2060" width="1240" height="400" rx="8"/></clipPath><clipPath id="clip-nav-active"><rect x="100" y="2180" width="320" height="40" rx="4"/></clipPath><clipPath id="clip-frame-responsive"><rect x="1340" y="2060" width="1160" height="400" rx="8"/></clipPath></defs>
+<rect x="0" y="0" width="2560" height="2520" fill="#FFF8DE"/>
+<rect x="0" y="0" width="2560" height="150" fill="#101827"/>
+<rect x="0" y="0" width="14" height="150" fill="#8CA9FF"/>
+<text x="60" y="72" font-family="Inter, 'Segoe UI', sans-serif" font-size="40" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="6">GENERATOR LAPORAN</text>
+<text x="60" y="108" font-family="Georgia, 'Times New Roman', serif" font-size="16" font-weight="400" fill="#8CA9FF" text-anchor="start">Design System v2.1 &#8212; Editorial Akademik</text>
+<text x="2500" y="62" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#AAC4F5" text-anchor="end">Siap impor: seret berkas ini ke kanvas Figma Desktop</text>
+<text x="2500" y="88" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#8EA3C7" text-anchor="end">Token = variabel CSS (index.css :root) &#183; tanda BARU = perlu ditambahkan ke :root</text>
+<text x="2500" y="114" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#8EA3C7" text-anchor="end">24 Oktober 2026</text>
+<g id="Frame/Colors" data-name="Frame/Colors">
+<rect x="60" y="200" width="1240" height="560" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-colors)">
+<rect x="60" y="200" width="1240" height="34" fill="#101827"/>
+<rect x="60" y="200" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="78" y="223" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">COLOR TOKENS</text>
+<text x="1282" y="223" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#AAC4F5" text-anchor="end">21 token &#183; 5 baru</text>
+<g id="Swatch/--canvas" data-name="Swatch/--canvas">
+<rect x="90" y="256" width="190" height="92" rx="5" fill="#FFF8DE" stroke="#AAC4F5" stroke-width="1"/>
+<text x="102" y="292" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--canvas</text>
+<text x="102" y="314" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#FFF8DE</text>
+<text x="102" y="334" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Latar kertas</text>
+</g>
+<g id="Swatch/--paper" data-name="Swatch/--paper">
+<rect x="288" y="256" width="190" height="92" rx="5" fill="#FFFFFF" stroke="#AAC4F5" stroke-width="1"/>
+<text x="300" y="292" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--paper</text>
+<text x="300" y="314" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#FFFFFF</text>
+<text x="300" y="334" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Lembar dokumen</text>
+<rect x="428" y="268" width="38" height="16" rx="3" fill="none" stroke="#101827" stroke-width="1"/>
+<text x="447" y="280" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#101827" text-anchor="middle">BARU</text>
+</g>
+<g id="Swatch/--surface-muted" data-name="Swatch/--surface-muted">
+<rect x="486" y="256" width="190" height="92" rx="5" fill="#FFF2C6" stroke="#AAC4F5" stroke-width="1"/>
+<text x="498" y="292" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--surface-muted</text>
+<text x="498" y="314" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#FFF2C6</text>
+<text x="498" y="334" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Permukaan input</text>
+</g>
+<g id="Swatch/--ink" data-name="Swatch/--ink">
+<rect x="684" y="256" width="190" height="92" rx="5" fill="#101827" stroke="#AAC4F5" stroke-width="1"/>
+<text x="696" y="292" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--ink</text>
+<text x="696" y="314" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#101827</text>
+<text x="696" y="334" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Tinta utama</text>
+</g>
+<g id="Swatch/--ink-soft" data-name="Swatch/--ink-soft">
+<rect x="882" y="256" width="190" height="92" rx="5" fill="#2F405D" stroke="#AAC4F5" stroke-width="1"/>
+<text x="894" y="292" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--ink-soft</text>
+<text x="894" y="314" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#2F405D</text>
+<text x="894" y="334" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Teks isi</text>
+</g>
+<g id="Swatch/--ink-muted" data-name="Swatch/--ink-muted">
+<rect x="1080" y="256" width="190" height="92" rx="5" fill="#60708A" stroke="#AAC4F5" stroke-width="1"/>
+<text x="1092" y="292" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--ink-muted</text>
+<text x="1092" y="314" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#60708A</text>
+<text x="1092" y="334" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Teks tersier</text>
+</g>
+<g id="Swatch/--line" data-name="Swatch/--line">
+<rect x="90" y="364" width="190" height="92" rx="5" fill="#C6D4EC" stroke="#AAC4F5" stroke-width="1"/>
+<text x="102" y="400" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--line</text>
+<text x="102" y="422" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#C6D4EC</text>
+<text x="102" y="442" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Garis biasa</text>
+</g>
+<g id="Swatch/--line-strong" data-name="Swatch/--line-strong">
+<rect x="288" y="364" width="190" height="92" rx="5" fill="#AAC4F5" stroke="#AAC4F5" stroke-width="1"/>
+<text x="300" y="400" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--line-strong</text>
+<text x="300" y="422" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#AAC4F5</text>
+<text x="300" y="442" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Garis tegas</text>
+</g>
+<g id="Swatch/--accent" data-name="Swatch/--accent">
+<rect x="486" y="364" width="190" height="92" rx="5" fill="#8CA9FF" stroke="#AAC4F5" stroke-width="1"/>
+<text x="498" y="400" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--accent</text>
+<text x="498" y="422" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#8CA9FF</text>
+<text x="498" y="442" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Aksi utama</text>
+</g>
+<g id="Swatch/--accent-dark" data-name="Swatch/--accent-dark">
+<rect x="684" y="364" width="190" height="92" rx="5" fill="#3D5DAF" stroke="#AAC4F5" stroke-width="1"/>
+<text x="696" y="400" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--accent-dark</text>
+<text x="696" y="422" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#3D5DAF</text>
+<text x="696" y="442" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Hover / teks aksen</text>
+</g>
+<g id="Swatch/--accent-pale" data-name="Swatch/--accent-pale">
+<rect x="882" y="364" width="190" height="92" rx="5" fill="#DCE6FF" stroke="#AAC4F5" stroke-width="1"/>
+<text x="894" y="400" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--accent-pale</text>
+<text x="894" y="422" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#DCE6FF</text>
+<text x="894" y="442" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Latar aksi AI</text>
+</g>
+<g id="Swatch/--success-pale" data-name="Swatch/--success-pale">
+<rect x="1080" y="364" width="190" height="92" rx="5" fill="#E3EBFF" stroke="#AAC4F5" stroke-width="1"/>
+<text x="1092" y="400" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--success-pale</text>
+<text x="1092" y="422" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#E3EBFF</text>
+<text x="1092" y="442" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Latar sukses</text>
+</g>
+<g id="Swatch/--warning-pale" data-name="Swatch/--warning-pale">
+<rect x="90" y="472" width="190" height="92" rx="5" fill="#FFF2C6" stroke="#AAC4F5" stroke-width="1"/>
+<text x="102" y="508" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--warning-pale</text>
+<text x="102" y="530" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#FFF2C6</text>
+<text x="102" y="550" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Latar peringatan</text>
+</g>
+<g id="Swatch/--warning" data-name="Swatch/--warning">
+<rect x="288" y="472" width="190" height="92" rx="5" fill="#6E5A24" stroke="#AAC4F5" stroke-width="1"/>
+<text x="300" y="508" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--warning</text>
+<text x="300" y="530" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#6E5A24</text>
+<text x="300" y="550" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Teks peringatan</text>
+</g>
+<g id="Swatch/--danger-pale" data-name="Swatch/--danger-pale">
+<rect x="486" y="472" width="190" height="92" rx="5" fill="#F4DCE0" stroke="#AAC4F5" stroke-width="1"/>
+<text x="498" y="508" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--danger-pale</text>
+<text x="498" y="530" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#F4DCE0</text>
+<text x="498" y="550" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Latar error</text>
+</g>
+<g id="Swatch/--danger" data-name="Swatch/--danger">
+<rect x="684" y="472" width="190" height="92" rx="5" fill="#7A404A" stroke="#AAC4F5" stroke-width="1"/>
+<text x="696" y="508" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--danger</text>
+<text x="696" y="530" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#7A404A</text>
+<text x="696" y="550" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Teks error</text>
+</g>
+<g id="Swatch/--danger-line" data-name="Swatch/--danger-line">
+<rect x="882" y="472" width="190" height="92" rx="5" fill="#D7A8B3" stroke="#AAC4F5" stroke-width="1"/>
+<text x="894" y="508" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--danger-line</text>
+<text x="894" y="530" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#D7A8B3</text>
+<text x="894" y="550" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Garis error</text>
+<rect x="1022" y="484" width="38" height="16" rx="3" fill="none" stroke="#101827" stroke-width="1"/>
+<text x="1041" y="496" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#101827" text-anchor="middle">BARU</text>
+</g>
+<g id="Swatch/--sidebar-line" data-name="Swatch/--sidebar-line">
+<rect x="90" y="580" width="190" height="92" rx="5" fill="#263957" stroke="#AAC4F5" stroke-width="1"/>
+<text x="102" y="616" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--sidebar-line</text>
+<text x="102" y="638" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#263957</text>
+<text x="102" y="658" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Garis sidebar</text>
+</g>
+<g id="Swatch/--sidebar-text" data-name="Swatch/--sidebar-text">
+<rect x="288" y="580" width="190" height="92" rx="5" fill="#CBD7EE" stroke="#AAC4F5" stroke-width="1"/>
+<text x="300" y="616" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--sidebar-text</text>
+<text x="300" y="638" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#CBD7EE</text>
+<text x="300" y="658" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Teks sidebar</text>
+<rect x="428" y="592" width="38" height="16" rx="3" fill="none" stroke="#101827" stroke-width="1"/>
+<text x="447" y="604" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#101827" text-anchor="middle">BARU</text>
+</g>
+<g id="Swatch/--sidebar-muted" data-name="Swatch/--sidebar-muted">
+<rect x="486" y="580" width="190" height="92" rx="5" fill="#8EA3C7" stroke="#AAC4F5" stroke-width="1"/>
+<text x="498" y="616" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#101827" text-anchor="start">--sidebar-muted</text>
+<text x="498" y="638" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#101827" text-anchor="start">#8EA3C7</text>
+<text x="498" y="658" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Meta sidebar</text>
+<rect x="626" y="592" width="38" height="16" rx="3" fill="none" stroke="#101827" stroke-width="1"/>
+<text x="645" y="604" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#101827" text-anchor="middle">BARU</text>
+</g>
+<g id="Swatch/--sidebar-hover" data-name="Swatch/--sidebar-hover">
+<rect x="684" y="580" width="190" height="92" rx="5" fill="#1B2B47" stroke="#AAC4F5" stroke-width="1"/>
+<text x="696" y="616" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#FFF8DE" text-anchor="start">--sidebar-hover</text>
+<text x="696" y="638" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#FFF8DE" text-anchor="start">#1B2B47</text>
+<text x="696" y="658" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#FFF8DE" text-anchor="start">Hover sidebar</text>
+<rect x="824" y="592" width="38" height="16" rx="3" fill="none" stroke="#FFF8DE" stroke-width="1"/>
+<text x="843" y="604" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#FFF8DE" text-anchor="middle">BARU</text>
+</g>
+<text x="90" y="704" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Catatan: --warning-pale bernilai sama dengan --surface-muted; --success-pale hampir sama dengan --accent-pale (pertimbangkan dibedakan).</text>
+<text x="90" y="726" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Warna teks di atas swatch dipilih otomatis (ink / canvas) agar kontras &#8805; 4,5 : 1.</text>
+</g>
+<g id="Frame/Typography" data-name="Frame/Typography">
+<rect x="1340" y="200" width="1160" height="560" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-typography)">
+<rect x="1340" y="200" width="1160" height="34" fill="#101827"/>
+<rect x="1340" y="200" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="1358" y="223" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">TYPOGRAPHY</text>
+<g id="Type/DisplayH1" data-name="Type/DisplayH1">
+<text x="1370" y="300" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">Display H1 &#8212; Georgia 700</text>
+<text x="1640" y="300" font-family="Georgia, 'Times New Roman', serif" font-size="40" font-weight="700" fill="#101827" text-anchor="start" letter-spacing="-1.5">Laporan akademik yang bisa ditinjau</text>
+</g>
+<g id="Type/H2Panel" data-name="Type/H2Panel">
+<text x="1370" y="358" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">H2 Panel &#8212; Georgia 700</text>
+<text x="1640" y="358" font-family="Georgia, 'Times New Roman', serif" font-size="24" font-weight="700" fill="#101827" text-anchor="start">Formulir Pembuatan Laporan</text>
+</g>
+<g id="Type/H3Kartu" data-name="Type/H3Kartu">
+<text x="1370" y="404" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">H3 Kartu &#8212; Inter 700</text>
+<text x="1640" y="404" font-family="Inter, 'Segoe UI', sans-serif" font-size="16" font-weight="700" fill="#101827" text-anchor="start">Sumber Referensi</text>
+</g>
+<g id="Type/Body" data-name="Type/Body">
+<text x="1370" y="448" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">Body &#8212; Inter 400 / 13px</text>
+<text x="1640" y="448" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="400" fill="#101827" text-anchor="start">Setiap kalimat membawa kutipan dari sumber dan diperiksa ulang secara lokal.</text>
+</g>
+<g id="Type/Kecilmeta" data-name="Type/Kecilmeta">
+<text x="1370" y="488" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">Kecil / meta &#8212; Inter 500 / 11px</text>
+<text x="1640" y="488" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="#101827" text-anchor="start">Abstrak (754 karakter) &#183; 861 kata (~4 mnt baca)</text>
+</g>
+<g id="Type/Labelform" data-name="Type/Labelform">
+<text x="1370" y="528" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">Label form &#8212; Inter 800 caps / 10px</text>
+<text x="1640" y="528" font-family="Inter, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#101827" text-anchor="start" letter-spacing="1.6">JUDUL LAPORAN AKADEMIK</text>
+</g>
+<g id="Type/Overlinemono" data-name="Type/Overlinemono">
+<text x="1370" y="568" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">Overline mono &#8212; 10px 800</text>
+<text x="1640" y="568" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#101827" text-anchor="start" letter-spacing="1.1">01 / INPUT &#183; 02 / BRIEF</text>
+</g>
+<g id="Type/Kertasdokumen" data-name="Type/Kertasdokumen">
+<text x="1370" y="624" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#60708A" text-anchor="start">Kertas dokumen &#8212; Times 12pt = 16px</text>
+<text x="1640" y="624" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Biochar menaikkan pH tanah asam sebesar 0,5 sampai 1,2 satuan (Ramadhani, 2023).</text>
+</g>
+<line x1="1370" y1="326" x2="2470" y2="326" stroke="#C6D4EC" stroke-width="1"/>
+<line x1="1370" y1="380" x2="2470" y2="380" stroke="#C6D4EC" stroke-width="1"/>
+<line x1="1370" y1="426" x2="2470" y2="426" stroke="#C6D4EC" stroke-width="1"/>
+<line x1="1370" y1="466" x2="2470" y2="466" stroke="#C6D4EC" stroke-width="1"/>
+<line x1="1370" y1="506" x2="2470" y2="506" stroke="#C6D4EC" stroke-width="1"/>
+<line x1="1370" y1="546" x2="2470" y2="546" stroke="#C6D4EC" stroke-width="1"/>
+<line x1="1370" y1="594" x2="2470" y2="594" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1370" y="684" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#2F405D" text-anchor="start">Skala ukuran (px): 10 &#183; 11 &#183; 12 &#183; 13 &#183; 16 &#183; 24 &#183; 40  |  Bobot: 400 &#183; 500 &#183; 600 &#183; 700 &#183; 800</text>
+<text x="1370" y="706" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#2F405D" text-anchor="start">Kertas: Times New Roman 12 pt = 16 px pada 100%  |  Mono: JetBrains Mono (ganti ke Consolas bila produksi memakainya).</text>
+</g>
+<g id="Frame/Buttons" data-name="Frame/Buttons">
+<rect x="60" y="800" width="1240" height="520" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-buttons)">
+<rect x="60" y="800" width="1240" height="34" fill="#101827"/>
+<rect x="60" y="800" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="78" y="823" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">BUTTONS &amp; ACTIONS</text>
+<text x="90" y="866" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">DEFAULT</text>
+<text x="450" y="866" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">HOVER</text>
+<text x="810" y="866" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">KELAS CSS</text>
+<g id="Button/Primary/Default" data-name="Button/Primary/Default">
+<rect x="90" y="882" width="330" height="40" rx="5" fill="#8CA9FF" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="255" y="907" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#101827" text-anchor="middle">Generate Laporan Sekarang</text>
+</g>
+<g id="Button/Primary/Hover" data-name="Button/Primary/Hover">
+<rect x="450" y="882" width="330" height="40" rx="5" fill="#3D5DAF" stroke="#AAC4F5" stroke-width="1.5"/>
+<text x="615" y="907" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#FFF8DE" text-anchor="middle">Generate Laporan Sekarang</text>
+</g>
+<text x="810" y="906" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">.ui-action-primary</text>
+<g id="Button/Secondary/Default" data-name="Button/Secondary/Default">
+<rect x="90" y="944" width="330" height="40" rx="5" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="255" y="969" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#2F405D" text-anchor="middle">Muat Ulang Baku</text>
+</g>
+<g id="Button/Secondary/Hover" data-name="Button/Secondary/Hover">
+<rect x="450" y="944" width="330" height="40" rx="5" fill="#FFF8DE" stroke="#60708A" stroke-width="1.5"/>
+<text x="615" y="969" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#101827" text-anchor="middle">Muat Ulang Baku</text>
+</g>
+<text x="810" y="968" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">.ui-action-secondary</text>
+<g id="Button/AI/Default" data-name="Button/AI/Default">
+<rect x="90" y="1006" width="330" height="40" rx="5" fill="#DCE6FF" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="255" y="1031" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#3D5DAF" text-anchor="middle">Parafrase AI</text>
+</g>
+<g id="Button/AI/Hover" data-name="Button/AI/Hover">
+<rect x="450" y="1006" width="330" height="40" rx="5" fill="#8CA9FF" stroke="#AAC4F5" stroke-width="1.5"/>
+<text x="615" y="1031" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#101827" text-anchor="middle">Parafrase AI</text>
+</g>
+<text x="810" y="1030" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">.ui-action-ai</text>
+<g id="Button/DangerGhost/Default" data-name="Button/DangerGhost/Default">
+<rect x="90" y="1068" width="330" height="40" rx="5" fill="#FFF8DE" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="255" y="1093" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#7A404A" text-anchor="middle">Hapus sumber</text>
+</g>
+<g id="Button/DangerGhost/Hover" data-name="Button/DangerGhost/Hover">
+<rect x="450" y="1068" width="330" height="40" rx="5" fill="#F4DCE0" stroke="#D7A8B3" stroke-width="1.5"/>
+<text x="615" y="1093" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#7A404A" text-anchor="middle">Hapus sumber</text>
+</g>
+<text x="810" y="1092" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">.danger ghost</text>
+<text x="90" y="1142" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">DISABLED</text>
+<text x="450" y="1142" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">FOCUS-VISIBLE</text>
+<g id="Button/Secondary/Disabled" data-name="Button/Secondary/Disabled">
+<rect x="90" y="1154" width="330" height="40" rx="5" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1.5" opacity="0.6"/>
+<text x="255" y="1179" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#60708A" text-anchor="middle">Usulkan outline</text>
+</g>
+<g id="Button/Secondary/Focus" data-name="Button/Secondary/Focus">
+<rect x="446" y="1150" width="338" height="48" rx="9" fill="none" stroke="#8CA9FF" stroke-width="2"/>
+<rect x="448.5" y="1152.5" width="333" height="43" rx="6.5" fill="none" stroke="#8CA9FF" stroke-width="3" stroke-opacity="0.44"/>
+<rect x="450" y="1154" width="330" height="40" rx="5" fill="#FFF2C6" stroke="#101827" stroke-width="1.5"/>
+<text x="615" y="1179" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#101827" text-anchor="middle">Simpan Profil</text>
+</g>
+<text x="810" y="1178" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">:disabled  &#183;  :focus-visible</text>
+</g>
+<g id="Frame/FormsStatus" data-name="Frame/FormsStatus">
+<rect x="1340" y="800" width="1160" height="520" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-formsstatus)">
+<rect x="1340" y="800" width="1160" height="34" fill="#101827"/>
+<rect x="1340" y="800" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="1358" y="823" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">FORMS, STATUS &amp; FEEDBACK</text>
+<g id="Field/Input/Default" data-name="Field/Input/Default">
+<text x="1370" y="866" font-family="Inter, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.6">JUDUL LAPORAN AKADEMIK</text>
+<rect x="1370" y="876" width="520" height="40" rx="5" fill="#FFF2C6" stroke="#60708A" stroke-width="1.5"/>
+<text x="1384" y="901" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="400" fill="#101827" text-anchor="start">Pengaruh Biochar terhadap Kesehatan Tanah&#8230;</text>
+</g>
+<text x="1370" y="938" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">default</text>
+<g id="Field/Input/Focus" data-name="Field/Input/Focus">
+<text x="1930" y="866" font-family="Inter, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.6">JUDUL LAPORAN AKADEMIK</text>
+<rect x="1928.5" y="874.5" width="523" height="43" rx="6.5" fill="none" stroke="#8CA9FF" stroke-width="3" stroke-opacity="0.44"/>
+<rect x="1930" y="876" width="520" height="40" rx="5" fill="#FFF2C6" stroke="#101827" stroke-width="1.5"/>
+<text x="1944" y="901" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="400" fill="#101827" text-anchor="start">Pengaruh Biochar terhadap Kesehatan Tanah&#8230;</text>
+</g>
+<text x="1930" y="938" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">focus &#183; border ink + ring 3px</text>
+<text x="1370" y="972" font-family="Inter, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.6">VARIAN</text>
+<g id="Field/Select" data-name="Field/Select">
+<rect x="1370" y="982" width="240" height="40" rx="5" fill="#FFF2C6" stroke="#60708A" stroke-width="1.5"/>
+<text x="1384" y="1007" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#3D5DAF" text-anchor="start">Varian B (Baku)</text>
+<path transform="translate(1584 999)" d="M0 0 L8 0 L4 5 Z" fill="#3D5DAF"/>
+</g>
+<text x="1640" y="972" font-family="Inter, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.6">OUTLINE</text>
+<g id="Field/Textarea" data-name="Field/Textarea">
+<rect x="1640" y="982" width="810" height="80" rx="5" fill="#FFF2C6" stroke="#60708A" stroke-width="1.5"/>
+<text x="1654" y="1008" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">BAB 1. PENDAHULUAN</text>
+<text x="1654" y="1028" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">1.1 Latar Belakang</text>
+<text x="1654" y="1048" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">1.2 Rumusan Masalah</text>
+</g>
+<text x="1370" y="1094" font-family="Inter, 'Segoe UI', sans-serif" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.6">STATUS</text>
+<g id="Pill/Saved" data-name="Pill/Saved">
+<rect x="1370" y="1104" width="189" height="30" rx="15" fill="#8CA9FF" stroke="#C6D4EC" stroke-width="1.5"/>
+<g transform="translate(1382 1113)" fill="none" stroke="#101827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L5 9.5 L10.5 3"/></g>
+<text x="1400" y="1123.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#101827" text-anchor="start">Tersimpan (Autosaved)</text>
+</g>
+<g id="Pill/Saving" data-name="Pill/Saving">
+<rect x="1573" y="1104" width="124" height="30" rx="15" fill="#FFF2C6" stroke="#6E5A24" stroke-width="1.5" stroke-opacity="0.4"/>
+<g transform="translate(1585 1113)" fill="none" stroke="#6E5A24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1.5 A4.5 4.5 0 1 1 1.5 6"/></g>
+<text x="1603" y="1123.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#6E5A24" text-anchor="start">Menyimpan&#8230;</text>
+</g>
+<g id="Pill/SaveFailed" data-name="Pill/SaveFailed">
+<rect x="1711" y="1104" width="241" height="30" rx="15" fill="#F4DCE0" stroke="#D7A8B3" stroke-width="1.5"/>
+<g transform="translate(1723 1113)" fill="none" stroke="#7A404A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1.5 L11 10.5 H1 Z"/><path d="M6 5 V7.2"/><path d="M6 9 V9.01"/></g>
+<text x="1741" y="1123.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#7A404A" text-anchor="start">Gagal menyimpan &#8212; dicoba ulang</text>
+</g>
+<g id="Pill/CitationMatch" data-name="Pill/CitationMatch">
+<rect x="1370" y="1148" width="136" height="30" rx="15" fill="#E3EBFF" stroke="#AAC4F5" stroke-width="1.5"/>
+<g transform="translate(1382 1157)" fill="none" stroke="#3D5DAF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L5 9.5 L10.5 3"/></g>
+<text x="1400" y="1167.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#3D5DAF" text-anchor="start">Kutipan Cocok</text>
+</g>
+<g id="Pill/CitationMismatch" data-name="Pill/CitationMismatch">
+<rect x="1520" y="1148" width="172" height="30" rx="15" fill="#F4DCE0" stroke="#D7A8B3" stroke-width="1.5"/>
+<g transform="translate(1532 1157)" fill="none" stroke="#7A404A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3 L9 9 M9 3 L3 9"/></g>
+<text x="1550" y="1167.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#7A404A" text-anchor="start">Kutipan Tidak Cocok</text>
+</g>
+<g id="Pill/NotClaim" data-name="Pill/NotClaim">
+<rect x="1706" y="1148" width="173" height="30" rx="15" fill="#FFF8DE" stroke="#AAC4F5" stroke-width="1.5"/>
+<g transform="translate(1718 1157)" fill="none" stroke="#60708A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6 H9.5"/></g>
+<text x="1736" y="1167.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#60708A" text-anchor="start">Bukan Klaim Faktual</text>
+</g>
+<g id="Pill/AIService" data-name="Pill/AIService">
+<rect x="1893" y="1148" width="207" height="30" rx="15" fill="#DCE6FF" stroke="#AAC4F5" stroke-width="1.5"/>
+<g transform="translate(1905 1157)" fill="none" stroke="#3D5DAF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3" fill="#3D5DAF" stroke="none"/></g>
+<text x="1923" y="1167.5" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#3D5DAF" text-anchor="start">LAYANAN AI &#183; terhubung</text>
+</g>
+<g id="Toast/Default" data-name="Toast/Default">
+<rect x="1370" y="1198" width="420" height="46" rx="6" fill="#101827" stroke="#AAC4F5" stroke-width="1.5"/>
+<g clip-path="url(#clip-toast)">
+<rect x="1370" y="1198" width="5" height="46" fill="#8CA9FF"/>
+</g>
+<text x="1394" y="1226" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#FFF8DE" text-anchor="start">Sumber Manual berhasil ditambahkan.</text>
+</g>
+<text x="1370" y="1270" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Toast: role=status &#183; aria-live=polite &#183; max 420px &#183; auto-hide 5s</text>
+</g>
+<g id="Frame/ReviewCanvas" data-name="Frame/ReviewCanvas">
+<rect x="60" y="1360" width="2440" height="660" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-reviewcanvas)">
+<rect x="60" y="1360" width="2440" height="34" fill="#101827"/>
+<rect x="60" y="1360" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="78" y="1383" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">CANVAS REVIEW STUDIO</text>
+<text x="2482" y="1383" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#AAC4F5" text-anchor="end">skala 1:1 &#183; rail 230 &#183; kertas A4 794 &#183; inspektur 360</text>
+<text x="90" y="1436" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">RAIL &#183; 230 PX</text>
+<text x="340" y="1436" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">KERTAS &#183; A4 794 PX &#183; TIMES 12 PT = 16 PX</text>
+<text x="1154" y="1436" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">INSPEKTUR &#183; 360 PX</text>
+<text x="1554" y="1436" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">LEGENDA STATUS KALIMAT</text>
+<g id="Review/Rail" data-name="Review/Rail">
+<rect x="90" y="1452" width="230" height="520" rx="3" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-rail)">
+<rect x="90" y="1452" width="230" height="34" fill="#101827"/>
+</g>
+<text x="104" y="1474" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="1.6">STRUKTUR BAB</text>
+<text x="104" y="1514" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">BAB 1. PENDAHULUAN</text>
+<rect x="91" y="1526" width="228" height="32" fill="#DCE6FF"/>
+<rect x="91" y="1526" width="4" height="32" fill="#3D5DAF"/>
+<text x="122" y="1546" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#101827" text-anchor="start">1.1 Latar Belakang</text>
+<text x="122" y="1578" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">1.2 Rumusan Masalah</text>
+<text x="122" y="1610" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">1.3 Tujuan Penelitian</text>
+<text x="104" y="1642" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">BAB 2. TINJAUAN PUSTAKA</text>
+<text x="122" y="1674" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">2.1 Biochar</text>
+<text x="122" y="1706" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">2.2 Kesehatan Tanah</text>
+<text x="104" y="1738" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">BAB 3. METODE</text>
+</g>
+<g id="Review/Paper" data-name="Review/Paper">
+<rect x="340" y="1452" width="794" height="520" rx="2" fill="#FFFFFF" stroke="#101827" stroke-width="1.5"/>
+<path d="M491 1972 V1565 H1021 V1972" fill="none" stroke="#C6D4EC" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
+<rect x="487" y="1631" width="538" height="48" fill="#8CA9FF" fill-opacity="0.45" stroke="#3D5DAF" stroke-width="1.5"/>
+<rect x="487" y="1631" width="4" height="48" fill="#3D5DAF"/>
+<rect x="487" y="1679" width="538" height="72" fill="#E3EBFF"/>
+<rect x="487" y="1679" width="3" height="72" fill="#AAC4F5"/>
+<rect x="487" y="1819" width="538" height="48" fill="#F4DCE0"/>
+<rect x="487" y="1819" width="3" height="48" fill="#7A404A"/>
+<text x="756" y="1582" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="700" fill="#101827" text-anchor="middle">BAB 1. PENDAHULUAN</text>
+<text x="491" y="1618" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="700" fill="#101827" text-anchor="start">1.1 Latar Belakang</text>
+<text x="491" y="1806" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="700" fill="#101827" text-anchor="start">1.2 Rumusan Masalah</text>
+<text x="539" y="1648" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Arang yang berasal dari pirolisis biomassa dalam kondisi oksigen</text>
+<text x="491" y="1672" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">terbatas disebut biochar (Ramadhani, 2023).</text>
+<text x="491" y="1696" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Penelitian menunjukkan biochar mampu menaikkan pH tanah asam sebesar</text>
+<text x="491" y="1720" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">0,5 sampai 1,2 satuan pada dosis 10 ton per hektar (Biochar dan</text>
+<text x="491" y="1744" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Kesehatan Tanah, 2023).</text>
+<text x="491" y="1768" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#60708A" text-anchor="start">Bagian berikut menguraikan tujuan dan ruang lingkup kajian.</text>
+<text x="539" y="1836" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Biochar juga menurunkan kadar air tanah hingga 40 persen pada</text>
+<text x="491" y="1860" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">lahan kering (Pratama, 2022).</text>
+<text x="491" y="1884" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Hasil tersebut belum konsisten pada jenis tanah yang berbeda</text>
+<text x="491" y="1908" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">(Wibowo, 2021). Oleh karena itu, diperlukan kajian lanjutan</text>
+<text x="491" y="1932" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">mengenai pengaruh dosis dan jenis bahan baku biochar terhadap</text>
+<text x="491" y="1956" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">sifat kimia tanah.</text>
+<rect x="338" y="1892" width="798" height="80" fill="url(#paperFade)"/>
+</g>
+<g id="Review/Inspector" data-name="Review/Inspector">
+<rect x="1154" y="1452" width="360" height="520" rx="3" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-inspector)">
+<rect x="1154" y="1452" width="360" height="34" fill="#101827"/>
+</g>
+<text x="1168" y="1474" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="1.6">INSPEKTUR KALIMAT</text>
+<g transform="translate(1168 1506)" fill="none" stroke="#3D5DAF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L5 9.5 L10.5 3"/></g>
+<text x="1188" y="1516" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#3D5DAF" text-anchor="start">Kutipan Cocok dengan Sumber</text>
+<rect x="1168" y="1532" width="332" height="100" rx="4" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1180" y="1556" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#2F405D" text-anchor="start" letter-spacing="1">BUKTI KUTIPAN DARI TEKS SUMBER</text>
+<text x="1180" y="1580" font-family="Georgia, 'Times New Roman', serif" font-size="13" font-weight="400" fill="#101827" text-anchor="start">&#8220;Biochar adalah arang yang dihasilkan</text>
+<text x="1180" y="1598" font-family="Georgia, 'Times New Roman', serif" font-size="13" font-weight="400" fill="#101827" text-anchor="start">dari pirolisis biomassa dalam kondisi</text>
+<text x="1180" y="1616" font-family="Georgia, 'Times New Roman', serif" font-size="13" font-weight="400" fill="#101827" text-anchor="start">oksigen terbatas&#8230;&#8221;</text>
+<g id="Button/Inspector/Edit" data-name="Button/Inspector/Edit">
+<rect x="1168" y="1648" width="160" height="40" rx="5" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="1248" y="1673" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#2F405D" text-anchor="middle">Sunting di Tempat</text>
+</g>
+<g id="Button/Inspector/Done" data-name="Button/Inspector/Done">
+<rect x="1340" y="1648" width="160" height="40" rx="5" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="1420" y="1673" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#2F405D" text-anchor="middle">Tandai Selesai</text>
+</g>
+<g id="Button/Inspector/AI" data-name="Button/Inspector/AI">
+<rect x="1168" y="1700" width="332" height="40" rx="5" fill="#DCE6FF" stroke="#C6D4EC" stroke-width="1.5"/>
+<text x="1334" y="1725" font-family="Inter, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#3D5DAF" text-anchor="middle">Parafrase AI</text>
+</g>
+</g>
+<g id="Legend/ok" data-name="Legend/ok">
+<rect x="1554" y="1452" width="520" height="56" rx="3" fill="#FFFFFF" stroke="#C6D4EC" stroke-width="1"/>
+<rect x="1566" y="1460" width="496" height="40" fill="#E3EBFF"/>
+<rect x="1566" y="1460" width="3" height="40" fill="#AAC4F5"/>
+<text x="1582" y="1485" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Contoh kalimat dengan kutipan (Penulis, 2023).</text>
+<text x="2100" y="1476" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">Kutipan cocok</text>
+<text x="2100" y="1494" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">tint --success-pale &#183; bar --line-strong 3px</text>
+</g>
+<g id="Legend/sel" data-name="Legend/sel">
+<rect x="1554" y="1528" width="520" height="56" rx="3" fill="#FFFFFF" stroke="#C6D4EC" stroke-width="1"/>
+<rect x="1566" y="1536" width="496" height="40" fill="#8CA9FF" fill-opacity="0.45" stroke="#3D5DAF" stroke-width="1.5"/>
+<rect x="1566" y="1536" width="4" height="40" fill="#3D5DAF"/>
+<text x="1582" y="1561" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Contoh kalimat dengan kutipan (Penulis, 2023).</text>
+<text x="2100" y="1552" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">Terpilih (sedang diperiksa)</text>
+<text x="2100" y="1570" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">tint --accent 45% &#183; bar + garis --accent-dark</text>
+</g>
+<g id="Legend/bad" data-name="Legend/bad">
+<rect x="1554" y="1604" width="520" height="56" rx="3" fill="#FFFFFF" stroke="#C6D4EC" stroke-width="1"/>
+<rect x="1566" y="1612" width="496" height="40" fill="#F4DCE0"/>
+<rect x="1566" y="1612" width="3" height="40" fill="#7A404A"/>
+<text x="1582" y="1637" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#101827" text-anchor="start">Contoh kalimat dengan kutipan (Penulis, 2023).</text>
+<text x="2100" y="1628" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">Kutipan tidak cocok</text>
+<text x="2100" y="1646" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">tint --danger-pale &#183; bar --danger 3px</text>
+</g>
+<g id="Legend/skip" data-name="Legend/skip">
+<rect x="1554" y="1680" width="520" height="56" rx="3" fill="#FFFFFF" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1582" y="1713" font-family="'Times New Roman', Times, serif" font-size="16" font-weight="400" fill="#60708A" text-anchor="start">Contoh kalimat pengantar tanpa klaim.</text>
+<text x="2100" y="1704" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">Bukan klaim faktual</text>
+<text x="2100" y="1722" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">teks --ink-muted &#183; tanpa tint</text>
+</g>
+<text x="1554" y="1788" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Margin, spasi, dan ukuran heading kertas pada mock ini hanya ilustrasi &#8212; sesuaikan dengan template produksi.</text>
+<text x="1554" y="1810" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Rail disembunyikan &#8804; 1180px; inspektur menjadi panel bawah &#8804; 1020px (lihat Responsive).</text>
+</g>
+<g id="Frame/Navigation" data-name="Frame/Navigation">
+<rect x="60" y="2060" width="1240" height="400" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-navigation)">
+<rect x="60" y="2060" width="1240" height="34" fill="#101827"/>
+<rect x="60" y="2060" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="78" y="2083" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">NAVIGATION &#8212; SIDEBAR</text>
+<text x="1282" y="2083" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#AAC4F5" text-anchor="end">lebar mock 340px</text>
+<rect x="90" y="2124" width="340" height="152" rx="6" fill="#101827"/>
+<g id="Nav/Item/01/default" data-name="Nav/Item/01/default">
+<text x="114" y="2160" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="400" fill="#8CA9FF" text-anchor="start">01</text>
+<g transform="translate(142 2148)" fill="none" stroke="#CBD7EE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1.5" width="10" height="13" rx="1.5"/><path d="M5.5 5.5 H10.5 M5.5 8.5 H10.5 M5.5 11.5 H8.5"/></g>
+<text x="167" y="2160" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#CBD7EE" text-anchor="start">Studio laporan</text>
+<text x="406" y="2160" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#8EA3C7" text-anchor="end">sumber dan kerangka</text>
+</g>
+<line x1="438" y1="2156" x2="462" y2="2156" stroke="#AAC4F5" stroke-width="1"/>
+<text x="470" y="2160" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">default</text>
+<g id="Nav/Item/02/active" data-name="Nav/Item/02/active">
+<rect x="100" y="2180" width="320" height="40" rx="4" fill="#8CA9FF"/>
+<g clip-path="url(#clip-nav-active)">
+<rect x="100" y="2180" width="4" height="40" fill="#FFF2C6"/>
+</g>
+<text x="117" y="2204" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="400" fill="#101827" text-anchor="start">02</text>
+<g transform="translate(145 2192)" fill="none" stroke="#101827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8.3 L7.2 10.5 L11 5.8"/></g>
+<text x="170" y="2204" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#101827" text-anchor="start">Canvas &amp; review</text>
+<text x="406" y="2204" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#263957" text-anchor="end">baca per kalimat</text>
+</g>
+<line x1="438" y1="2200" x2="462" y2="2200" stroke="#AAC4F5" stroke-width="1"/>
+<text x="470" y="2204" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">aktif &#8212; latar --accent &#183; inset 4px --surface-muted &#183; geser 3px</text>
+<g id="Nav/Item/03/hover" data-name="Nav/Item/03/hover">
+<rect x="100" y="2224" width="320" height="40" rx="4" fill="#1B2B47"/>
+<text x="114" y="2248" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="400" fill="#8CA9FF" text-anchor="start">03</text>
+<g transform="translate(142 2236)" fill="none" stroke="#CBD7EE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 14 C3 10.5 5 9.5 8 9.5 C11 9.5 13 10.5 13 14"/></g>
+<text x="167" y="2248" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#CBD7EE" text-anchor="start">Profil &amp; institusi</text>
+<text x="406" y="2248" font-family="Inter, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#8EA3C7" text-anchor="end">identitas akademik</text>
+</g>
+<line x1="438" y1="2244" x2="462" y2="2244" stroke="#AAC4F5" stroke-width="1"/>
+<text x="470" y="2248" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">hover &#8212; latar --sidebar-hover</text>
+<text x="90" y="2320" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Grid item: 23px | ikon 26px | 1fr | auto</text>
+<text x="90" y="2342" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="400" fill="#60708A" text-anchor="start">Lebar sidebar 340px hanya contoh mock &#8212; samakan dengan produksi (&#8804; 900px: 214px &#183; &#8804; 700px: drawer).</text>
+</g>
+<g id="Frame/Responsive" data-name="Frame/Responsive">
+<rect x="1340" y="2060" width="1160" height="400" rx="8" fill="#FFF8DE" stroke="#101827" stroke-width="1.5"/>
+<g clip-path="url(#clip-frame-responsive)">
+<rect x="1340" y="2060" width="1160" height="34" fill="#101827"/>
+<rect x="1340" y="2060" width="6" height="34" fill="#8CA9FF"/>
+</g>
+<text x="1358" y="2083" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="800" fill="#FFF8DE" text-anchor="start" letter-spacing="2.4">RESPONSIVE BREAKPOINTS</text>
+<text x="1370" y="2122" font-family="'JetBrains Mono', Consolas, monospace" font-size="10" font-weight="800" fill="#60708A" text-anchor="start" letter-spacing="1.4">LEBAR CSS = LEBAR JENDELA &#247; ZOOM BROWSER</text>
+<g id="Breakpoint/1" data-name="Breakpoint/1">
+<rect x="1370" y="2138" width="150" height="26" rx="3" fill="#101827" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2155.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#FFF8DE" text-anchor="start">&#8805; 1181px</text>
+<text x="1536" y="2155" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Review 3 panel: rail 230 + kertas + inspektur min(360px, 30vw)</text>
+</g>
+<g id="Breakpoint/2" data-name="Breakpoint/2">
+<rect x="1370" y="2172" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2189.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">&#8804; 1180px</text>
+<text x="1536" y="2189" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Rail Struktur Bab disembunyikan; inspektur min(320px, 32vw)</text>
+</g>
+<g id="Breakpoint/3" data-name="Breakpoint/3">
+<rect x="1370" y="2206" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2223.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">&#8804; 1140px</text>
+<text x="1536" y="2223" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Hero Studio menyusun vertikal (statistik tidak terpotong)</text>
+</g>
+<g id="Breakpoint/4" data-name="Breakpoint/4">
+<rect x="1370" y="2240" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2257.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">&#8804; 1020px</text>
+<text x="1536" y="2257" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Inspektur jadi panel bawah 48vh; kertas lebar penuh</text>
+</g>
+<g id="Breakpoint/5" data-name="Breakpoint/5">
+<rect x="1370" y="2274" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2291.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">&#8804; 900px</text>
+<text x="1536" y="2291" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Sidebar 214px; header padat; pil autosave disembunyikan</text>
+</g>
+<g id="Breakpoint/6" data-name="Breakpoint/6">
+<rect x="1370" y="2308" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2325.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">&#8804; 760px</text>
+<text x="1536" y="2325" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Bilah perintah review scroll; padding studio menyusut</text>
+</g>
+<g id="Breakpoint/7" data-name="Breakpoint/7">
+<rect x="1370" y="2342" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2359.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">&#8804; 700px</text>
+<text x="1536" y="2359" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Sidebar jadi drawer mobile + scrim</text>
+</g>
+<g id="Breakpoint/8" data-name="Breakpoint/8">
+<rect x="1370" y="2376" width="150" height="26" rx="3" fill="#FFF2C6" stroke="#C6D4EC" stroke-width="1"/>
+<text x="1384" y="2393.5" font-family="'JetBrains Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#101827" text-anchor="start">tinggi &#8804; 620px</text>
+<text x="1536" y="2393" font-family="Inter, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#2F405D" text-anchor="start">Mode ringkas: command bar padat, kertas padding 14px</text>
+</g>
+<text x="1370" y="2434" font-family="'JetBrains Mono', Consolas, monospace" font-size="11" font-weight="700" fill="#3D5DAF" text-anchor="start">Prinsip: kertas selalu terjangkau &#8212; margin:auto saat lebih lebar</text>
+</g>
+</svg>

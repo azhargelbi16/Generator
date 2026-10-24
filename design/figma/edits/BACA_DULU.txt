@@ -1,0 +1,23 @@
+FOLDER INI = KOTAK MASUK EDISAN FIGMA ANDA
+===========================================
+
+Alur kerja Anda <-> AI:
+
+1. Buka Figma Desktop, buka/buat design file.
+2. Klik kanvas, tekan Ctrl+V — papan desain Generator Laporan
+   (sudah disalin ke clipboard). Atau seret berkas:
+   C:\Generator\design\figma\Generator_Laporan_Design_Board.svg
+3. Sunting papan itu di Figma sesuka Anda (warna, komponen, layout).
+4. Selesai menyunting: pilih frame yang berubah ->
+   klik kanan -> "Copy/Paste as" -> "Copy as SVG"
+   (atau File -> Export selection -> SVG)
+5. Simpan/unduh hasilnya ke folder INI:
+   C:\Generator\design\figma\edits\
+6. Balas ke ZCode: "terapkan edisan figma" —
+   AI akan membaca berkas SVG di folder ini dan
+   menerapkan perubahan Anda ke kode aplikasi
+   (token warna, komponen, CSS, layout).
+
+Catatan: ekspor PNG juga bisa (beri nama yang jelas,
+mis. tombol-baru.png). Setiap berkas di folder ini
+akan dibaca sebagai instruksi desain.

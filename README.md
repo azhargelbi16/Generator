@@ -106,17 +106,25 @@ Setiap kalimat selalu punya salah satu dari tiga status. Warna status hanya munc
 
 | Status | Arti |
 | --- | --- |
-| Terverifikasi (hijau) | Kutipan kalimat ditemukan di teks sumber |
-| Belum terverifikasi (merah) | Kutipan tidak ditemukan, atau kalimat baru Anda sunting |
+| Kutipan cocok (hijau) | Kutipan kalimat ditemukan di teks sumber. Ini bukan jaminan klaim benar — tetap baca sumbernya. |
+| Kutipan tidak cocok (merah) | Kutipan tidak ditemukan, atau kalimat baru Anda sunting |
 | Bukan klaim faktual (abu) | AI menandai kalimat sebagai opini atau kalimat pengantar |
 
-Ekspor diblokir selama masih ada kalimat yang belum ditandai selesai. Bila Anda tetap ingin menyimpan, muncul konfirmasi eksplisit dan kejadian itu dicatat di berkas log.
+Gerbang ekspor (jendela Pemeriksaan Akhir) juga menandai: kalimat faktual yang tidak membawa sitasi sama sekali, daftar pustaka yang akan kosong, dan bagian bab yang masih kosong ("Kosong" di sidebar Struktur Bab). Masih ada kalimat yang belum ditandai selesai atau bagian yang kosong tidak memblokir ekspor: gerbang menampilkan peringatan, dan bila Anda tetap ingin menyimpan, muncul konfirmasi eksplisit yang kejadiannya dicatat di berkas log. Dokumen dengan penanda `{{...}}` yang tersisa tetap ditolak otomatis.
+
+Draf aktif tersimpan otomatis lengkap dengan judul, sumber, dan catatan review Anda, sehingga aman menutup lalu membuka aplikasi kembali. "Mulai Lembar Kerja Kosong Baru" mengarsipkan draf lama yang masih berisi (berawalan `arsip_`) alih-alih memusnahkannya.
 
 Bila satu kalimat memakai beberapa sumber, sitasinya digabung dalam satu tanda kurung dipisah titik koma dan diurutkan alfabetis sesuai APA 7, mis. `(Abadi, 2021; Zed, 2020)`. Daftar pustaka hanya memuat sumber yang benar-benar dikutip.
 
 ## Catatan OCR
 
 PDF hasil pindaian diproses OCR: halaman dirender dengan pypdfium2 lalu dikenali rapidocr. Kualitas OCR bisa kurang akurat sehingga lebih banyak kalimat ditandai tidak terverifikasi; selalu periksa hasilnya. Model OCR diunduh saat pertama kali menjalankan OCR sehingga butuh internet. Unduhannya dicache di dalam `.venv` (folder `site-packages`), bukan di folder `data\`, sehingga menghapus folder `data\` tidak mengulang unduhan model.
+
+## Desain & responsivitas
+
+- Sistem desain resmi: `design/DESIGN_SYSTEM.md` (token warna, tipografi, komponen, breakpoint). Papan desain siap-impor Figma: seret `design/figma/Generator_Laporan_Design_Board.svg` ke kanvas Figma Desktop.
+- Antarmuka diuji pada 100%–200% zoom dan ukuran jendela minimum (960×640). Saat jendela sempit: rail Struktur Bab disembunyikan (≤1180px), inspektur kalimat turun menjadi panel bawah (≤1020px), dan dialog selalu punya scroll internal.
+- Semua dialog dapat ditutup dengan tombol Escape; label form terikat kolom isinya untuk pembaca layar.
 
 ## Catatan teknis
 
