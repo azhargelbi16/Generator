@@ -37,6 +37,65 @@ interface TabReviewProps {
   isActive?: boolean;
 }
 
+const ISSUE_LABELS: Record<string, string> = {
+  pending: 'kalimat yang belum ditandai selesai,',
+  citations: 'kalimat faktual tanpa sitasi atau daftar pustaka yang kosong,',
+  empty_sections: 'bagian dokumen yang benar-benar kosong,',
+  mojibake: 'nama/judul sumber yang rusak karakternya,',
+  filename: 'nama berkas yang perlu diperbaiki,',
+  citation_style: 'gaya sitasi yang belum konsisten,',
+  logo_missing: 'berkas logo yang tidak ditemukan,',
+};
+
+const describePreflightIssues = (
+  issues: Array<{ kind: string; message: string }>
+): string => {
+  const parts = issues
+    .map((issue) => ISSUE_LABELS[issue.kind] || `${issue.message},`)
+    .slice(0, 4);
+  return parts.length > 0 ? parts.join(' ') : 'temuan yang perlu diperhatikan.';
+};
+
+const normalizeReviewSections = (value: unknown): Section[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((rawSection, sectionIndex) => {
+    if (!rawSection || typeof rawSection !== 'object') return [];
+    const section = rawSection as Record<string, unknown>;
+    const rawParagraphs = Array.isArray(section.paragraphs) ? section.paragraphs : [];
+    const paragraphs = rawParagraphs.map((rawParagraph) => {
+      const paragraph = rawParagraph && typeof rawParagraph === 'object'
+        ? rawParagraph as Record<string, unknown>
+        : {};
+      const rawSentences = Array.isArray(paragraph.sentences) ? paragraph.sentences : [];
+      const sentences: Sentence[] = rawSentences.flatMap((rawSentence, sentenceIndex) => {
+        if (!rawSentence || typeof rawSentence !== 'object') return [];
+        const sentence = rawSentence as Record<string, unknown>;
+        const text = String(sentence.text ?? '').trim();
+        if (!text) return [];
+        return [{
+          uid: String(sentence.uid || `review-${sectionIndex}-${sentenceIndex}`),
+          text,
+          quote: String(sentence.quote ?? ''),
+          source_ids: Array.isArray(sentence.source_ids)
+            ? sentence.source_ids.filter((id): id is number => Number.isInteger(id))
+            : [],
+          is_factual: sentence.is_factual !== false,
+          origin: typeof sentence.origin === 'string' ? sentence.origin : undefined,
+          citation: sentence.citation !== false,
+        }];
+      });
+      return { sentences };
+    });
+
+    return [{
+      level: Number.isFinite(Number(section.level)) ? Number(section.level) : 1,
+      title: String(section.title ?? '').trim(),
+      paragraphs,
+    }];
+  });
+};
+
 export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive = false }) => {
   const [sections, setSections] = useState<Section[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
@@ -66,7 +125,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
   const [fitWidth, setFitWidth] = useState<boolean>(false);
   const [showOutline, setShowOutline] = useState<boolean>(true);
   const [readingMode, setReadingMode] = useState<boolean>(false);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [filterMode, setFilterMode] = useState<'all' | 'unverified' | 'verified'>('all');
   const [hoveredCard, setHoveredCard] = useState<{
     sent: Sentence;
@@ -113,10 +172,6 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
   };
 
   useEffect(() => {
-    loadDraft();
-  }, []);
-
-  useEffect(() => {
     if (isActive) {
       loadDraft();
     }
@@ -125,8 +180,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
   const loadDraft = async () => {
     try {
       const draft = await api.loadActiveDraft();
-      if (draft?.has_draft && draft.sections && draft.sections.length > 0) {
-        setSections(draft.sections);
+      const normalizedSections = normalizeReviewSections(draft?.sections);
+      if (draft?.has_draft && normalizedSections.length > 0) {
+        setSections(normalizedSections);
         const s = draft.sources || [];
         setSources(s);
         const done = new Set(draft.done || []);
@@ -134,9 +190,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
 
         // Seamless Concurrent Handshake: Run verification, citations & analytics in parallel (Zero-Lag)
         const [verifiedStatuses, cit, stats] = await Promise.all([
-          api.verifyDocument(draft.sections, s),
-          api.computeCitations(s, draft.sections, 'et_al'),
-          api.getDocumentAnalytics(draft.sections, s).catch((err) => {
+          api.verifyDocument(normalizedSections, s),
+          api.computeCitations(s, normalizedSections, 'et_al'),
+          api.getDocumentAnalytics(normalizedSections, s).catch((err) => {
             console.warn('Gagal memuat analitik:', err);
             return null;
           }),
@@ -145,6 +201,12 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
         if (verifiedStatuses) setStatuses(verifiedStatuses);
         if (cit) setCitations({ labels: cit.labels, references: cit.references });
         if (stats) setAnalytics(stats);
+      } else {
+        setSections([]);
+        setSources([]);
+        setStatuses([]);
+        setCitations({ labels: {}, references: [] });
+        setAnalytics(null);
       }
     } catch (e) {
       console.error(e);
@@ -298,14 +360,34 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
 
   const saveCurrentDraft = (curSections: Section[], curDone: Set<string>) => {
     setSaveStatus('saving');
+    window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'saving' } }));
     api.saveActiveDraft({
       sections: curSections,
-      sources,
       done: Array.from(curDone),
     }).then(() => {
+      window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'saved' } }));
       setTimeout(() => setSaveStatus('saved'), 400);
-    }).catch(() => {
-      setSaveStatus('saved');
+    }).catch((err) => {
+      // Jangan samarkan kegagalan autosave sebagai "tersimpan" (F2): tunjukkan
+      // status gagal dan coba ulang sekali agar draf tidak hilang diam-diam.
+      console.error('[Autosave Gagal]', err);
+      setSaveStatus('error');
+      window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'error' } }));
+      setTimeout(() => {
+        setSaveStatus('saving');
+        window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'saving' } }));
+        api.saveActiveDraft({
+          sections: curSections,
+          done: Array.from(curDone),
+        }).then(() => {
+          setSaveStatus('saved');
+          window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'saved' } }));
+        }).catch((retryErr) => {
+          console.error('[Autosave Gagal (retry)]', retryErr);
+          setSaveStatus('error');
+          window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'error' } }));
+        });
+      }, 3000);
     });
   };
 
@@ -345,11 +427,18 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
     setIsExporting(true);
     try {
       const draft = await api.loadActiveDraft();
+      let tplId = draft?.fields?.TEMPLATE_ID ? Number(draft.fields.TEMPLATE_ID) : undefined;
+      if (!tplId) {
+        try {
+          const tpls = await api.listTemplates();
+          if (tpls && tpls.length > 0) tplId = tpls[0].id;
+        } catch (_) {}
+      }
       const res = await api.exportReport({
         sections,
         sources,
         fields: draft?.fields || { JUDUL: 'Laporan' },
-        template_id: draft?.fields?.TEMPLATE_ID || 1,
+        template_id: tplId || 1,
         open_word: true,
       });
 
@@ -381,29 +470,29 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
   const selectedStatusObj = selectedUid ? getSentenceStatusObj(selectedUid) : null;
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-100">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-100 min-w-0 review-studio">
       {/* Top Review Bar */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm z-10">
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm z-10 review-command-bar">
         {/* Sentence Counter Badges */}
-        <div className="flex items-center space-x-3 text-xs">
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+        <div className="flex items-center space-x-3 text-xs min-w-0 flex-wrap gap-y-1">
+          <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200 whitespace-nowrap">
             <span>Selesai: {doneCount}/{totalSentences}</span>
           </div>
-          <span className="flex items-center space-x-1 text-emerald-700 font-semibold">
+          <span className="flex items-center space-x-1 text-emerald-700 font-semibold whitespace-nowrap">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{verifiedCount} Terverifikasi</span>
+            <span>{verifiedCount} Kutipan Cocok</span>
           </span>
           {needsReviewCount > 0 && (
-            <span className="flex items-center space-x-1 text-amber-700 font-semibold">
+            <span className="flex items-center space-x-1 text-amber-700 font-semibold whitespace-nowrap">
               <AlertCircle className="w-3.5 h-3.5" />
               <span>{needsReviewCount} Perlu Ditinjau</span>
             </span>
           )}
-          <span className="flex items-center space-x-1 text-rose-700 font-semibold">
+          <span className="flex items-center space-x-1 text-rose-700 font-semibold whitespace-nowrap">
             <AlertCircle className="w-3.5 h-3.5" />
-            <span>{unverifiedCount} Belum Terverifikasi</span>
+            <span>{unverifiedCount} Kutipan Tidak Cocok</span>
           </span>
-          <span className="flex items-center space-x-1 text-slate-500 font-medium">
+          <span className="flex items-center space-x-1 text-slate-500 font-medium whitespace-nowrap">
             <span>{nonFactualCount} Opini/Pengantar</span>
           </span>
 
@@ -413,7 +502,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
               <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
                 {analytics.total_words.toLocaleString('id-ID')} kata (~{analytics.reading_time_minutes} mnt baca)
               </span>
-              <span className={`px-2.5 py-1 rounded-full font-semibold border ${
+              <span
+                title={`Rincian: struktur ${Math.min(30, Math.round(analytics.section_distribution.length * 7.5))}/30 · panjang ${Math.min(30, Math.round((analytics.total_words / 1500) * 30))}/30 (target 1500 kata) · sitasi ${Math.round((analytics.citation_coverage_pct / 100) * 40)}/40. Kutipan cocok berarti kalimatnya memuat kutipan yang ditemukan di sumber, bukan jaminan kebenaran klaim.`}
+                className={`px-2.5 py-1 rounded-full font-semibold border cursor-help ${
                 analytics.academic_score >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
               }`}>
                 Skor Kualitas: {analytics.academic_score}/100
@@ -459,7 +550,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
               filterMode === 'verified' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-700 hover:bg-emerald-50'
             }`}
           >
-            <span>Terverifikasi</span>
+            <span>Kutipan Cocok</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
               filterMode === 'verified' ? 'bg-white/30 text-white' : 'bg-emerald-100 text-emerald-800'
             }`}>
@@ -469,9 +560,25 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
         </div>
 
         {/* NotebookLM Autosave Status Pill */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-medium text-slate-600 mr-2">
-          <span className={`w-2 h-2 rounded-full ${saveStatus === 'saving' ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`} />
-          <span>{saveStatus === 'saving' ? 'Menyimpan...' : '✓ Tersimpan (Autosaved)'}</span>
+        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-medium mr-2 ${
+          saveStatus === 'error'
+            ? 'bg-rose-50 border-rose-300 text-rose-700'
+            : 'bg-slate-50 border-slate-200/80 text-slate-600'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${
+            saveStatus === 'saving'
+              ? 'bg-amber-400 animate-ping'
+              : saveStatus === 'error'
+                ? 'bg-rose-500'
+                : 'bg-emerald-500'
+          }`} />
+          <span>
+            {saveStatus === 'saving'
+              ? 'Menyimpan...'
+              : saveStatus === 'error'
+                ? '⚠ Gagal menyimpan — mencoba ulang...'
+                : '✓ Tersimpan (Autosaved)'}
+          </span>
         </div>
 
         {/* Action Buttons & Canvas Controls */}
@@ -539,7 +646,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
             onClick={handleMarkVerifiedDone}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
           >
-            Setujui Semua Terverifikasi
+            Setujui Semua Kutipan Cocok
           </button>
           <button
             type="button"
@@ -567,10 +674,10 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
       </div>
 
       {/* Main Review Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden review-main-area">
         {/* Left Outline Navigator Sidebar */}
         {showOutline && sections.length > 0 && (
-          <div className="w-60 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-sm z-10 animate-slideRight">
+          <div className="w-60 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-sm z-10 animate-slideRight review-outline">
             <div className="p-4 flex-1 overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
                 <div className="flex items-center space-x-2 text-xs font-bold text-slate-700">
@@ -594,9 +701,16 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
                     >
                       <div className="flex items-center justify-between">
                         <span className="truncate flex-1">{sec.title || `Bab ${idx + 1}`}</span>
-                        {secSentences.length > 0 && (
+                        {secSentences.length > 0 ? (
                           <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 shrink-0 ml-1">
                             {verified}/{secSentences.length}
+                          </span>
+                        ) : (
+                          <span
+                            title="Bagian ini masih kosong. Isi manual dengan mengedit dokumen, atau generate ulang."
+                            className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 shrink-0 ml-1"
+                          >
+                            Kosong
                           </span>
                         )}
                       </div>
@@ -621,7 +735,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
         )}
 
         {/* Document Paper Sheet (Scrollable) */}
-        <div className="flex-1 overflow-y-auto p-8 flex justify-center">
+        <div className="flex-1 overflow-y-auto p-8 flex justify-center review-document-stage">
           {sections.length === 0 ? (
             <div className="text-center py-24 text-slate-400 text-sm">
               Belum ada hasil laporan untuk direview.<br />Silakan generate laporan terlebih dahulu di tab <strong>Buat Laporan</strong>.
@@ -629,11 +743,11 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
           ) : (
             <div
               style={{
-                width: fitWidth ? '100%' : `${Math.round(820 * (zoom / 100))}px`,
-                maxWidth: fitWidth ? '100%' : `${Math.round(820 * (zoom / 100))}px`,
-                fontSize: `${15 * (zoom / 100)}px`,
+                width: fitWidth ? '100%' : `${Math.round(794 * (zoom / 100))}px`,
+                maxWidth: fitWidth ? '100%' : `${Math.round(794 * (zoom / 100))}px`,
+                fontSize: `${16 * (zoom / 100)}px`,
               }}
-              className={`bg-white paper-sheet rounded-xl p-16 font-serif text-slate-800 leading-relaxed shadow-lg border border-slate-200/60 my-4 select-text transition-all duration-150 ${
+              className={`review-paper bg-white paper-sheet rounded-xl p-16 text-slate-800 leading-relaxed shadow-lg border border-slate-200/60 my-4 select-text transition-all duration-150 ${
                 fitWidth ? 'max-w-5xl' : ''
               }`}
             >
@@ -654,18 +768,26 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
 
                   {/* Paragraphs */}
                   {section.paragraphs.map((para, pIdx) => (
-                    <p key={pIdx} className="text-justify indent-8 text-[15px] leading-8 mb-4">
+                    <p key={pIdx} className="text-justify indent-8 leading-8 mb-4">
                       {para.sentences.map((sent) => {
                         const isSelected = selectedUid === sent.uid;
                         const status = getSentenceStatus(sent.uid);
                         const isDone = isSentenceDone(sent.uid);
 
-                        // Build rendered citation string if active
+                        // Build rendered citation string if active.
+                        // Label dari backend sudah membawa kurungnya sendiri
+                        // "(Santoso, 2020)"; buang kurung itu lalu gabung dalam
+                        // satu tanda kurung, sama seperti compose() di DOCX,
+                        // agar kanvas tidak menampilkan "((Santoso, 2020))" (F5).
                         let citationText = '';
                         if (sent.citation && sent.source_ids?.length > 0) {
                           const labels = sent.source_ids
                             .map((id) => citations.labels[id])
-                            .filter(Boolean);
+                            .filter(Boolean)
+                            .map((label) => {
+                              const t = label.trim();
+                              return t.startsWith('(') && t.endsWith(')') ? t.slice(1, -1) : t;
+                            });
                           if (labels.length > 0) {
                             citationText = ` (${labels.join('; ')})`;
                           }
@@ -681,18 +803,15 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
                             onClick={() => handleSentenceClick(sent)}
                             onMouseEnter={(e) => handleSentenceMouseEnter(e, sent)}
                             onMouseLeave={handleSentenceMouseLeave}
-                            className={`cursor-pointer transition-all duration-150 relative rounded px-0.5 ${
-                              isDimmed ? 'opacity-25' : ''
-                            } ${
-                              isSelected
-                                ? 'bg-amber-200/90 text-slate-900 ring-2 ring-amber-400 font-medium'
-                                : status === 'perlu_ditinjau' && !isDone
-                                ? 'underline decoration-wavy decoration-amber-500 decoration-1 text-slate-900 bg-amber-50/50'
-                                : (status === 'belum_terverifikasi' || status === 'tidak_terverifikasi') && !isDone
-                                ? 'underline decoration-wavy decoration-rose-400 decoration-1 text-slate-900 bg-rose-50/40'
-                                : status === 'terverifikasi' && filterMode === 'verified'
-                                ? 'bg-emerald-50 text-emerald-950 font-medium'
-                                : 'hover:bg-brand-50/80 hover:text-brand-900'
+                            data-status={
+                              isDone && status !== 'terverifikasi' && status !== 'bukan_klaim_faktual'
+                                ? 'terverifikasi' // ditandai selesai: turun ke bar tipis biru
+                                : status
+                            }
+                            data-done={isDone ? 'true' : 'false'}
+                            title={isDone ? 'Sudah ditandai selesai' : undefined}
+                            className={`review-sentence cursor-pointer rounded px-0.5 ${isDimmed ? 'opacity-25' : ''} ${
+                              isSelected ? 'is-selected' : ''
                             }`}
                           >
                             <span>{sent.text}</span>
@@ -729,7 +848,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
 
         {/* Selected Sentence Inspector / Evidence Drawer (Right Side) */}
         {selectedSentence && !readingMode && (
-          <div className="w-96 bg-white border-l border-slate-200 flex flex-col justify-between shrink-0 shadow-lg z-20">
+          <div className="w-96 bg-white border-l border-slate-200 flex flex-col justify-between shrink-0 shadow-lg z-20 review-inspector">
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center space-x-2">
@@ -745,9 +864,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
                     }`}
                   >
                     {selectedStatus === 'terverifikasi'
-                      ? '✓ Terverifikasi Sumber'
+                      ? '✓ Kutipan Cocok dengan Sumber'
                       : selectedStatus === 'perlu_ditinjau'
-                      ? '⚠ Perlu Ditinjau'
+                       ? 'Perlu Ditinjau'
                       : selectedStatus === 'bukan_klaim' || selectedStatus === 'bukan_klaim_faktual'
                       ? '○ Bukan Klaim Faktual'
                       : '✕ Belum Terverifikasi'}
@@ -947,8 +1066,8 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
                   : 'bg-rose-100 text-rose-800'
               }`}
             >
-              {hoveredCard.status === 'terverifikasi' ? '✓ Terverifikasi' :
-               hoveredCard.status === 'perlu_ditinjau' ? '⚠️ Perlu Ditinjau' :
+              {hoveredCard.status === 'terverifikasi' ? '✓ Kutipan Cocok' :
+               hoveredCard.status === 'perlu_ditinjau' ? 'Perlu Ditinjau' :
                hoveredCard.status === 'bukan_klaim' || hoveredCard.status === 'bukan_klaim_faktual' ? 'Opini / Pengantar' :
                '✗ Belum Terverifikasi'}
             </span>
@@ -967,7 +1086,7 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
           {hoveredCard.source && (
             <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
               <span className="truncate max-w-[210px] font-medium text-slate-700">
-                📄 {hoveredCard.source.title}
+                {hoveredCard.source.title}
               </span>
               <span className="font-semibold text-brand-700 shrink-0 ml-1">
                 {hoveredCard.source.authors?.[0]?.family || 'Penulis'} ({hoveredCard.source.year || 'n.d.'})
@@ -1013,10 +1132,12 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
               ))}
             </div>
 
-            {/* Warning if issues */}
+            {/* Warning if issues — teks catatan mengikuti jenis temuan yang
+                benar-benar ada, bukan pesan basi "belum ditandai selesai"
+                saat semua kalimat sudah hijau (F4). */}
             {preflightIssues.length > 0 && (
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 mb-6">
-                <strong>Catatan:</strong> Masih ada beberapa kalimat atau penanda yang belum ditandai selesai. Anda tetap bisa melanjutkan bila yakin.
+                <strong>Catatan:</strong> Masih ada {describePreflightIssues(preflightIssues)} Anda tetap bisa melanjutkan bila yakin.
               </div>
             )}
 

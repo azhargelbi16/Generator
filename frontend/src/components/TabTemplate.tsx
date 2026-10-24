@@ -375,24 +375,24 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
   });
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-7xl mx-auto space-y-6 text-slate-800">
+    <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-7xl mx-auto space-y-6 text-slate-800 template-studio">
       {/* Educational SaaS Banner: Mengapa Ada {{ }} */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 rounded-2xl bg-brand-600 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 template-intro">
         <div className="flex items-start space-x-3.5">
           <div className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5 border border-white/20">
-            <Sparkles className="w-5 h-5 text-blue-100" />
+            <Sparkles className="w-5 h-5 text-brand-100" />
           </div>
           <div className="space-y-1">
             <div className="flex items-center space-x-2">
               <h3 className="text-sm font-bold tracking-tight text-white">
                 Mengapa Template Word Menggunakan Tanda Kurung {"{{ ... }}"}?
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-white/20 text-blue-100 border border-white/30">
+                <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-white/20 text-brand-100 border border-white/30">
                 Jangkar Otomatis AI
               </span>
             </div>
-            <p className="text-xs text-blue-50 leading-relaxed max-w-3xl">
-              Tanda kurung ganda <code className="font-mono px-1.5 py-0.5 rounded bg-blue-900/60 text-white font-bold border border-blue-400/40">{"{{ ... }}"}</code> adalah <strong>"Jangkar Otomatis"</strong> di Microsoft Word. Tanda ini memberi tahu sistem lokasi persis untuk menyuntikkan judul, nama, logo, bab AI, dan daftar pustaka APA 7 tanpa merusak margin 4-4-3-3 cm atau tata letak dokumen Word yang sudah Anda atur.
+            <p className="text-xs text-brand-50 leading-relaxed max-w-3xl">
+              Tanda kurung ganda <code className="font-mono px-1.5 py-0.5 rounded bg-brand-900/60 text-white font-bold border border-brand-400/40">{"{{ ... }}"}</code> adalah <strong>"Jangkar Otomatis"</strong> di Microsoft Word. Tanda ini memberi tahu sistem lokasi persis untuk menyuntikkan judul, nama, logo, bab AI, dan daftar pustaka APA 7 tanpa merusak margin 4-4-3-3 cm atau tata letak dokumen Word yang sudah Anda atur.
             </p>
           </div>
         </div>
@@ -402,20 +402,20 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
             onClick={copyAllTagsToClipboard}
             className="px-4 py-2 bg-white/15 hover:bg-white/25 text-white border border-white/30 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
           >
-            <Copy className="w-3.5 h-3.5 text-blue-100" />
+              <Copy className="w-3.5 h-3.5 text-brand-100" />
             <span>Salin Seluruh Jangkar</span>
           </button>
         </div>
       </div>
 
       {/* Main Grid: Left Template List, Right Studio Workstation */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 template-workbench">
         {/* Left Column (4 Cols): Template List */}
         <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 flex flex-col min-h-[600px]">
           <div className="flex items-center justify-between mb-3 px-1">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <span>Daftar Template Dokumen</span>
-              <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
                 {templates.length}
               </span>
             </h3>
@@ -430,14 +430,14 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
               </button>
               <button
                 onClick={() => setShowCustomizeModal(true)}
-                className="p-1.5 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-lg transition"
+                 className="p-1.5 hover:bg-brand-50 text-slate-500 hover:text-brand-600 rounded-lg transition"
                 title="Kustomisasi Format Standar"
               >
                 <Sliders className="w-4 h-4" />
               </button>
               <button
                 onClick={handleUpload}
-                className="p-1.5 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded-lg transition"
+                 className="p-1.5 hover:bg-brand-50 text-slate-500 hover:text-brand-600 rounded-lg transition"
                 title="Unggah Berkas .docx"
               >
                 <UploadCloud className="w-4 h-4" />
@@ -453,7 +453,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari template..."
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
 
@@ -466,7 +466,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
               </p>
               <button
                 onClick={handleCreateDefault}
-                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-blue-500/20"
+                className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-brand-600/20"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Buat Template Standar</span>
@@ -480,12 +480,14 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                 const isDefault = tpl.is_default || tpl.nama.includes('Standar');
 
                 return (
-                  <div
+                  <button
                     key={tpl.id}
+                    type="button"
                     onClick={() => setSelectedTemplate(tpl)}
-                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all duration-150 relative ${
+                    aria-pressed={isSelected}
+                    className={`w-full p-3 rounded-xl border text-left transition-all duration-150 relative ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50/70 shadow-sm ring-1 ring-blue-500/30'
+                      ? 'border-brand-500 bg-brand-50/70 shadow-sm ring-1 ring-brand-500/30'
                         : 'border-slate-200/80 hover:border-slate-300 hover:bg-slate-50'
                     }`}
                   >
@@ -493,8 +495,8 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                       <div className="flex items-start space-x-2.5 min-w-0 flex-1">
                         <div className={`p-2 rounded-lg mt-0.5 shrink-0 ${
                           isDefault 
-                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
-                            : isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                            ? 'bg-brand-600 text-white shadow-sm'
+                            : isSelected ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'
                         }`}>
                           {isDefault ? <GraduationCap className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                         </div>
@@ -502,7 +504,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                           <div className="flex items-center gap-1.5">
                             <h4 className="text-xs font-bold text-slate-800 truncate">{tpl.nama}</h4>
                             {isDefault && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                              <span className="ui-status-info text-[9px] font-bold px-1.5 py-0.2 rounded border shrink-0">
                                 Resmi
                               </span>
                             )}
@@ -524,19 +526,19 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
 
                       <div className="shrink-0 flex flex-col items-end">
                         {isLengkap ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 flex items-center space-x-1">
-                            <CheckCircle2 className="w-3 h-3" />
+                          <span className="ui-status-success text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 flex items-center space-x-1">
+                            <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                             <span>Siap</span>
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 shrink-0 flex items-center space-x-1">
-                            <AlertTriangle className="w-3 h-3" />
+                          <span className="ui-status-warning text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 flex items-center space-x-1">
+                            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
                             <span>Kurang</span>
                           </span>
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -553,13 +555,13 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-base font-extrabold text-slate-800 truncate">{selectedTemplate.nama}</h3>
                     {selectedTemplate.status === 'lengkap' ? (
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1 shadow-xs">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span className="ui-status-success text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                         <span>Format Valid & Siap Ekspor</span>
                       </span>
                     ) : (
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1 shadow-xs">
-                        <AlertTriangle className="w-3 h-3 text-amber-600" />
+                      <span className="ui-status-warning text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" aria-hidden="true" />
                         <span>Perlu Melengkapi Penanda</span>
                       </span>
                     )}
@@ -569,7 +571,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                     <button
                       type="button"
                       onClick={() => copyPathToClipboard(selectedTemplate.path)}
-                      className="text-blue-600 hover:text-blue-800 underline text-[11px] shrink-0"
+                        className="text-brand-700 hover:text-brand-800 underline text-[11px] shrink-0"
                     >
                       {copiedPath ? 'Tersalin!' : 'Salin Path'}
                     </button>
@@ -580,7 +582,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => handleOpenInWord(selectedTemplate.id)}
-                    className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-md shadow-blue-500/25"
+                      className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-md shadow-brand-600/20"
                     title="Buka dan sunting template langsung di aplikasi Microsoft Word lokal"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -663,7 +665,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                 </div>
 
                 {activeTab === 'preview' && (
-                  <div className="hidden sm:flex items-center space-x-2 text-xs text-slate-500 pb-1">
+                  <div className="hidden sm:flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 pb-1">
                     <label className="flex items-center space-x-1.5 cursor-pointer select-none">
                       <input
                         type="checkbox"
@@ -752,10 +754,13 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                   </div>
 
                   {/* The Simulated A4 Paper Canvas on Neutral Drafting Backdrop */}
-                  <div className="flex justify-center p-8 bg-slate-100 rounded-2xl border border-slate-200 overflow-x-auto min-h-[500px] shadow-inner relative">
-                    <div 
-                      style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
-                      className="w-[560px] min-h-[780px] bg-white text-slate-900 rounded shadow-xl relative transition-transform duration-150 p-10 flex flex-col justify-between font-serif select-none border border-slate-200"
+                  <div className="flex justify-center p-8 bg-slate-100 rounded-2xl border border-slate-200 overflow-auto min-h-[500px] shadow-inner relative">
+                    {/* CSS zoom (bukan transform) agar ukuran layout ikut menskala:
+                        overflow container menghitung area scroll dengan benar dan
+                        kertas A4 yang dizoom tidak lagi keluar dari bingkai. */}
+                    <div
+                      style={{ zoom: zoomLevel / 100 }}
+                      className="a4-preview-sheet w-[560px] min-h-[780px] bg-white text-slate-900 rounded shadow-xl relative transition-transform duration-150 p-10 flex flex-col justify-between font-serif select-none border border-slate-200"
                     >
                       {/* Margin Overlay Indicators */}
                       {showMarginGuide && (
@@ -940,7 +945,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
               {/* TAB 2: ACADEMIC FORMAT SPECIFICATIONS */}
               {activeTab === 'specs' && (
                 <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 flex items-start space-x-3">
+                  <div className="p-4 rounded-xl bg-brand-50 border border-brand-200/80 flex items-start space-x-3">
                     <Award className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="text-xs font-bold text-blue-950">Pedoman Baku Karya Ilmiah & Laporan Perguruan Tinggi</h4>
@@ -1006,7 +1011,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
               {activeTab === 'tags' && (
                 <div className="space-y-5 animate-fadeIn">
                   {/* Hero Health Dashboard Card */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50/50 to-white border border-blue-200 shadow-sm relative overflow-hidden">
+                  <div className="p-5 rounded-2xl bg-brand-50 border border-brand-200 shadow-sm relative overflow-hidden">
                     <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="space-y-1.5">
                         <div className="flex items-center space-x-2">
@@ -1137,7 +1142,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                       >
                         <option value="all">Semua Kategori</option>
                         <option value="identitas">👤 Identitas & Metadata (6)</option>
-                        <option value="media">🖼️ Aset Media & Logo (1)</option>
+                        <option value="media">Aset Media & Logo (1)</option>
                         <option value="struktur">📑 Struktur Laporan (3)</option>
                       </select>
 
@@ -1376,7 +1381,7 @@ export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) =>
                 type="button"
                 onClick={handleCreateDefault}
                 disabled={loading}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-blue-500/25"
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-brand-600/20"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Terapkan & Buat Template</span>

@@ -156,8 +156,8 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 max-w-5xl mx-auto">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto p-8 max-w-5xl mx-auto utility-studio">
+      <div className="mb-6 flex items-center justify-between utility-header">
         <div>
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">Data & Profil Akademik</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -167,7 +167,7 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
       </div>
 
       {/* Sub tabs */}
-      <div className="flex border-b border-slate-200 mb-6 space-x-6">
+      <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-slate-200 mb-6">
         {[
           { key: 'profil', label: 'Profil Mahasiswa', icon: User },
           { key: 'dosen', label: 'Dosen Pembimbing/Pengampu', icon: GraduationCap },
@@ -198,10 +198,11 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 max-w-2xl">
           <form onSubmit={handleSaveProfile} className="space-y-5">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+              <label htmlFor="profil-nama" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                 Nama Lengkap
               </label>
               <input
+                id="profil-nama"
                 type="text"
                 value={profile.nama}
                 onChange={(e) => setProfile({ ...profile, nama: e.target.value })}
@@ -211,10 +212,11 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                <label htmlFor="profil-nim" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   NIM / NPM
                 </label>
                 <input
+                  id="profil-nim"
                   type="text"
                   value={profile.nim}
                   onChange={(e) => setProfile({ ...profile, nim: e.target.value })}
@@ -223,10 +225,11 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                <label htmlFor="profil-prodi" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   Program Studi / Jurusan
                 </label>
                 <input
+                  id="profil-prodi"
                   type="text"
                   value={profile.prodi}
                   onChange={(e) => setProfile({ ...profile, prodi: e.target.value })}
@@ -237,10 +240,11 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                <label htmlFor="profil-fakultas" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   Fakultas
                 </label>
                 <input
+                  id="profil-fakultas"
                   type="text"
                   value={profile.fakultas || ''}
                   onChange={(e) => setProfile({ ...profile, fakultas: e.target.value })}
@@ -249,10 +253,11 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                <label htmlFor="profil-institusi" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   Perguruan Tinggi / Institusi
                 </label>
                 <input
+                  id="profil-institusi"
                   type="text"
                   value={profile.institusi || ''}
                   onChange={(e) => setProfile({ ...profile, institusi: e.target.value })}

@@ -86,6 +86,8 @@ export interface SourceRecord {
   url: string;
   text?: string;
   kind?: string;
+  /** Cakupan isi sumber: fulltext | partial | abstract | metadata_only */
+  content_status?: string;
 }
 
 export interface Sentence {

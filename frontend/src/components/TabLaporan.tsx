@@ -39,9 +39,48 @@ interface TabLaporanProps {
   isActive?: boolean;
 }
 
+/**
+ * Deskripsi jujur atas cakupan isi sumber (UAT: mahasiswa harus tahu apakah
+ * AI mengutip dari isi jurnal atau hanya abstrak/metadata).
+ * `content_status` dihitung backend saat sumber ditambahkan.
+ */
+const describeSourceContent = (
+  s: SourceRecord
+): { label: string; tone: 'ok' | 'warn' | 'danger'; hint: string } => {
+  const n = s.text?.length || 0;
+  const status = s.content_status || (n >= 1800 ? 'fulltext' : n > 600 ? 'partial' : 'abstract');
+  if (status === 'metadata_only' || (s.kind === 'doi' && n < 250)) {
+    return {
+      label: '⚠ Metadata saja — tanpa isi kutipan',
+      tone: 'danger',
+      hint: 'Sumber DOI ini tidak membawa teks yang bisa dikutip, sehingga AI tidak boleh menulis kalimat yang mengutipnya. Unggah PDF jurnal yang sama lewat tombol PDF/OCR, lalu koreksi metadata agar sitasinya memakai isi jurnal.',
+    };
+  }
+  if (status === 'fulltext') {
+    return {
+      label: n >= 8000 ? `Naskah lengkap (${Math.round(n / 1000)}rb karakter)` : `Teks lengkap (${n} karakter)`,
+      tone: 'ok',
+      hint: 'Seluruh isi dokumen tersimpan dan dipakai AI sebagai bahan kutipan — bukan hanya abstrak.',
+    };
+  }
+  if (status === 'partial') {
+    return {
+      label: `Teks ${n} karakter`,
+      tone: 'warn',
+      hint: 'Cakupan teks terbatas. Untuk jurnal berbayar, halaman web umumnya hanya menampilkan abstrak — unggah PDF lengkap agar AI mengutip isi jurnal (metode, hasil, pembahasan).',
+    };
+  }
+  return {
+    label: `⚠ Kemungkinan hanya abstrak (${n} karakter)`,
+    tone: 'warn',
+    hint: 'Teks yang tersimpan sangat pendek. Abstrak tidak cukup untuk laporan akademik — unggah PDF jurnal lengkap atau tempel teks isinya lewat tombol Manual.',
+  };
+};
+
 export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGeneratingChange, isActive = false }) => {
   const streamEndRef = React.useRef<HTMLDivElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const onGenerateCompleteRef = React.useRef(onGenerateComplete);
   const [autoScroll, setAutoScroll] = useState(true);
   // Inputs & Setup
   const [topic, setTopic] = useState('');
@@ -60,7 +99,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   const [selectedMatkul, setSelectedMatkul] = useState('');
   const [selectedLogoPath, setSelectedLogoPath] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState('b');
+  const [selectedVariant, setSelectedVariant] = useState('B');
   const [outline, setOutline] = useState<string[]>([]);
 
   // Modals & States
@@ -87,10 +126,53 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   const [isGenerating, setIsGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState({ batch: 1, total: 1 });
   const [recentSentences, setRecentSentences] = useState<Array<{ uid: string; text: string; status: string }>>([]);
+  const generationContextRef = React.useRef({
+    topic: '',
+    selectedDosen: '',
+    selectedMatkul: '',
+    selectedLogoPath: '',
+    selectedTemplateId: null as number | null,
+    selectedVariant: 'B',
+    outline: [] as string[],
+    sources: [] as SourceRecord[],
+  });
+
+  useEffect(() => {
+    onGenerateCompleteRef.current = onGenerateComplete;
+  }, [onGenerateComplete]);
+
+  useEffect(() => {
+    generationContextRef.current = {
+      topic,
+      selectedDosen,
+      selectedMatkul,
+      selectedLogoPath,
+      selectedTemplateId,
+      selectedVariant,
+      outline,
+      sources,
+    };
+  }, [topic, selectedDosen, selectedMatkul, selectedLogoPath, selectedTemplateId, selectedVariant, outline, sources]);
 
   useEffect(() => {
     onGeneratingChange?.(isGenerating);
   }, [isGenerating, onGeneratingChange]);
+
+  useEffect(() => {
+    const modalOpen = webUrlModal || manualTextModal || doiModal || projectModalOpen;
+    if (!modalOpen) return;
+
+    const closeModal = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setWebUrlModal(false);
+      setManualTextModal(false);
+      setDoiModal(false);
+      setProjectModalOpen(false);
+    };
+
+    window.addEventListener('keydown', closeModal);
+    return () => window.removeEventListener('keydown', closeModal);
+  }, [doiModal, manualTextModal, projectModalOpen, webUrlModal]);
 
   useEffect(() => {
     loadInitialData();
@@ -102,25 +184,37 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     const handleSentenceBorn = (e: any) => {
       setRecentSentences((prev) => [...prev, e.detail]);
     };
-    const handleGenComplete = (e: any) => {
-      setIsGenerating(false);
-      if (e?.detail?.sections) {
-        api.saveActiveDraft({
+    const handleGenComplete = async (e: any) => {
+      const generatedSections = e?.detail?.sections;
+      if (!Array.isArray(generatedSections) || generatedSections.length === 0) {
+        setIsGenerating(false);
+        toast.error('Laporan selesai tanpa isi dokumen. Silakan coba generate ulang.');
+        return;
+      }
+
+      const current = generationContextRef.current;
+      try {
+        await api.saveActiveDraft({
           fields: {
-            JUDUL: topic,
-            DOSEN: selectedDosen,
-            MATA_KULIAH: selectedMatkul,
-            LOGO_PATH: selectedLogoPath,
-            TEMPLATE_ID: selectedTemplateId,
-            VARIANT: selectedVariant,
-            OUTLINE: outline,
+            JUDUL: current.topic,
+            DOSEN: current.selectedDosen,
+            MATA_KULIAH: current.selectedMatkul,
+            LOGO_PATH: current.selectedLogoPath,
+            TEMPLATE_ID: current.selectedTemplateId,
+            VARIANT: current.selectedVariant,
+            OUTLINE: current.outline,
           },
-          sources,
-          sections: e.detail.sections,
+          sources: current.sources,
+          sections: generatedSections,
           done: [],
         });
+        setIsGenerating(false);
+        onGenerateCompleteRef.current();
+      } catch (error) {
+        console.error(error);
+        setIsGenerating(false);
+        toast.error('Laporan selesai tetapi gagal disimpan. Tab Review tidak dibuka agar dokumen tidak kosong.');
       }
-      onGenerateComplete();
     };
     const handleGenError = (e: any) => {
       setIsGenerating(false);
@@ -153,6 +247,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     if (!topic && sources.length === 0 && outline.length === 0) return;
 
     const timer = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'saving' } }));
       api.saveActiveDraft({
         fields: {
           JUDUL: topic,
@@ -164,8 +259,12 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
           OUTLINE: outline,
         },
         sources,
-        sections: [],
-        done: [],
+      }).then(() => {
+        window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'saved' } }));
+      }).catch((err) => {
+        // Autosave yang gagal tidak boleh diam saja (F2); tandai di header.
+        console.error('[Autosave Gagal]', err);
+        window.dispatchEvent(new CustomEvent('generator-save-state', { detail: { status: 'error' } }));
       });
     }, 1000);
 
@@ -213,6 +312,10 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       }
       if (v) setVariants(v);
 
+      const currentVar = (draft?.fields?.VARIANT || 'B').toUpperCase();
+      const normalizedVar = ['A', 'B', 'C'].includes(currentVar) ? currentVar : (currentVar === 'BEBAS' ? 'bebas' : 'B');
+      setSelectedVariant(normalizedVar);
+
       if (draft?.has_draft) {
         setTopic(draft.fields?.JUDUL || '');
         if (draft.sources) setSources(draft.sources);
@@ -220,22 +323,31 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         if (draft.fields?.MATA_KULIAH) setSelectedMatkul(draft.fields.MATA_KULIAH);
         if (draft.fields?.LOGO_PATH) setSelectedLogoPath(draft.fields.LOGO_PATH);
         if (draft.fields?.TEMPLATE_ID) setSelectedTemplateId(Number(draft.fields.TEMPLATE_ID));
-        if (draft.fields?.VARIANT) setSelectedVariant(draft.fields.VARIANT);
 
-        if (draft.fields?.OUTLINE && Array.isArray(draft.fields.OUTLINE) && draft.fields.OUTLINE.length > 0) {
-          setOutline(draft.fields.OUTLINE);
-        } else if (draft.sections && draft.sections.length > 0) {
-          setOutline(draft.sections.map((s) => s.title));
-        } else if (v) {
-          const matchedV = v.find((x) => x.code === (draft.fields?.VARIANT || 'b'));
-          if (matchedV && matchedV.outline_titles.length > 0) {
-            setOutline(matchedV.outline_titles);
+        let activeOutline: string[] = [];
+        if (draft.fields?.OUTLINE && Array.isArray(draft.fields.OUTLINE)) {
+          activeOutline = draft.fields.OUTLINE.filter((x: string) => typeof x === 'string' && x.trim().length > 0);
+        }
+        if (activeOutline.length === 0 && draft.sections && draft.sections.length > 0) {
+          activeOutline = draft.sections.map((s) => s.title).filter((t: string) => t && t.trim().length > 0);
+        }
+        if (activeOutline.length === 0 && v) {
+          const matchedV = v.find((x) => x.code.toUpperCase() === normalizedVar.toUpperCase()) || v.find((x) => x.code.toUpperCase() === 'B');
+          if (matchedV && matchedV.outline_titles && matchedV.outline_titles.length > 0) {
+            activeOutline = matchedV.outline_titles;
           }
         }
-      } else if (v && outline.length === 0) {
-        // default variant outline
-        const varB = v.find((x) => x.code === 'b');
-        if (varB) setOutline(varB.outline_titles);
+        if (activeOutline.length > 0) {
+          setOutline(activeOutline);
+        } else if (v) {
+          const varB = v.find((x) => x.code.toUpperCase() === 'B');
+          if (varB && varB.outline_titles) setOutline(varB.outline_titles);
+        }
+      } else if (v) {
+        const matched = v.find((x) => x.code.toUpperCase() === normalizedVar.toUpperCase()) || v.find((x) => x.code.toUpperCase() === 'B');
+        if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
+          setOutline(matched.outline_titles);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -244,23 +356,70 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
   const handleVariantChange = (code: string) => {
     setSelectedVariant(code);
-    const v = variants.find((x) => x.code === code);
-    if (v && v.outline_titles.length > 0) {
-      setOutline(v.outline_titles);
-    } else {
-      setOutline([]);
+    const matched = variants.find((x) => x.code.toUpperCase() === code.toUpperCase());
+    if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
+      setOutline(matched.outline_titles);
+      toast.info(`Outline dimuat ulang sesuai format ${matched.name}.`);
+    } else if (code.toLowerCase() === 'bebas' && outline.filter((x) => x.trim()).length === 0) {
+      setOutline([
+        'BAB 1. PENDAHULUAN',
+        'BAB 2. TINJAUAN PUSTAKA',
+        'BAB 3. PEMBAHASAN',
+        'BAB 4. PENUTUP',
+      ]);
     }
   };
 
+  const handleResetOutline = () => {
+    const matched = variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) || variants.find((x) => x.code.toUpperCase() === 'B');
+    if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
+      setOutline(matched.outline_titles);
+      toast.success(`Outline di-reset ke struktur baku ${matched.name}.`);
+    } else {
+      setOutline([
+        'BAB 1. PENDAHULUAN',
+        'BAB 2. TINJAUAN PUSTAKA',
+        'BAB 3. HASIL DAN PEMBAHASAN',
+        'BAB 4. KESIMPULAN DAN SARAN',
+      ]);
+      toast.success('Outline di-reset ke struktur standar akademik.');
+    }
+  };
+
+  const handleAddChapter = () => {
+    const currentCount = outline.filter((x) => x.trim()).length;
+    const newChapter = `BAB ${currentCount + 1}. JUDUL BAB BARU`;
+    setOutline((prev) => [...prev.filter((x) => x.trim()), newChapter]);
+    toast.success('Bab baru ditambahkan ke outline. Anda dapat langsung mengedit judulnya.');
+  };
+
   // Add Sources Handlers
+  const appendSourceRecord = (record: SourceRecord, successMsg: string) => {
+    // Peringatan duplek: PDF sama yang dipilih dua kali diterima senyap
+    // sebelumnya dan menggandakan bobot sumber saat generate (F7).
+    const norm = (s?: string) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 300).toLowerCase();
+    const keyOf = (s: SourceRecord) => norm(s.text) || `${norm(s.title)}|${s.year || ''}`;
+    const incomingKey = keyOf(record);
+    const duplicate = sources.some((s) => {
+      if (incomingKey && keyOf(s) === incomingKey) return true;
+      const t1 = norm(s.title);
+      return !!t1 && t1 === norm(record.title) && (s.year || '') === (record.year || '');
+    });
+    setSources((prev) => [...prev, record]);
+    if (duplicate) {
+      toast.info(`⚠ Sumber dengan isi/judul yang sama sudah ada di daftar. Dipecah dua kali akan memperkuat bobotnya saat generate — hapus salah satu bila tidak disengaja. ${successMsg}`);
+    } else if (successMsg) {
+      toast.success(successMsg);
+    }
+  };
+
   const handleAddPdf = async () => {
     setLoadingSource(true);
     toast.info('Membuka dialog dan memproses berkas PDF...');
     try {
       const res = await api.pickPdfSource();
       if (res?.success && res.record) {
-        setSources((prev) => [...prev, res.record!]);
-        toast.success(`Sumber PDF "${res.record.title || 'Dokumen'}" berhasil ditambahkan.`);
+        appendSourceRecord(res.record, `Sumber PDF "${res.record.title || 'Dokumen'}" berhasil ditambahkan.`);
       } else if (res?.error) {
         toast.error(res.error);
       }
@@ -298,10 +457,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     try {
       const res = await api.addWebSource(webUrlInput.trim());
       if (res?.success && res.record) {
-        setSources((prev) => [...prev, res.record!]);
+        appendSourceRecord(res.record, 'Sumber Web berhasil ditambahkan.');
         setWebUrlModal(false);
         setWebUrlInput('');
-        toast.success('Sumber Web berhasil ditambahkan.');
       } else if (res?.error) {
         toast.error(res.error);
       }
@@ -316,10 +474,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     try {
       const res = await api.addManualSource(manualTextInput.trim());
       if (res?.success && res.record) {
-        setSources((prev) => [...prev, res.record!]);
+        appendSourceRecord(res.record, 'Sumber Manual berhasil ditambahkan.');
         setManualTextModal(false);
         setManualTextInput('');
-        toast.success('Sumber Manual berhasil ditambahkan.');
       } else if (res?.error) {
         toast.error(res.error);
       }
@@ -335,10 +492,16 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     try {
       const res = await api.resolveDoiSource(doiInput.trim());
       if (res?.success && res.record) {
-        setSources((prev) => [...prev, res.record!]);
+        appendSourceRecord(res.record, `Berhasil menambahkan referensi: ${res.record.title}`);
+        if ((res.record.text?.length || 0) < 250) {
+          toast.info(
+            '⚠ Sumber DOI ini hanya berisi metadata (tanpa teks yang bisa dikutip). ' +
+            'Unggah PDF jurnal yang sama lewat tombol PDF/OCR agar AI mengutip isi jurnal — ' +
+            'metadata DOI tetap terpakai untuk daftar pustaka.'
+          );
+        }
         setDoiModal(false);
         setDoiInput('');
-        toast.success(`Berhasil menambahkan referensi: ${res.record.title}`);
       } else {
         toast.error(res?.error || 'Gagal menyelesaikan DOI.');
       }
@@ -464,9 +627,35 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       toast.error('Masukkan minimal satu sumber referensi.');
       return;
     }
-    if (outline.length === 0) {
-      toast.error('Outline masih kosong.');
+    const totalSourceChars = sources.reduce((acc, s) => acc + (s.text || '').length, 0);
+    const quotableSources = sources.filter((s) => (s.text || '').length >= 250);
+    if (quotableSources.length === 0) {
+      toast.error(
+        'Semua sumber hanya berisi metadata/abstrak tanpa teks yang bisa dikutip. ' +
+        'Unggah PDF jurnal lengkap (atau tempel isinya lewat Manual) sebelum generate.'
+      );
       return;
+    }
+    if (totalSourceChars < 4000) {
+      toast.info(
+        `Sumber terbatas (±${totalSourceChars.toLocaleString('id-ID')} karakter dari ${quotableSources.length} sumber berisi). Laporan berisiko terlalu tipis; tambahkan sumber lain untuk isi yang lebih kaya.`
+      );
+    }
+    let effectiveOutline = outline.map((x) => x.trim()).filter(Boolean);
+    if (effectiveOutline.length === 0) {
+      const matched = variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) || variants.find((x) => x.code.toUpperCase() === 'B');
+      if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
+        effectiveOutline = matched.outline_titles;
+      } else {
+        effectiveOutline = [
+          'BAB 1. PENDAHULUAN',
+          'BAB 2. TINJAUAN PUSTAKA',
+          'BAB 3. HASIL DAN PEMBAHASAN',
+          'BAB 4. KESIMPULAN DAN SARAN',
+        ];
+      }
+      setOutline(effectiveOutline);
+      toast.info('Outline otomatis disiapkan dari struktur baku.');
     }
 
     await api.saveActiveDraft({
@@ -477,7 +666,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         LOGO_PATH: selectedLogoPath,
         TEMPLATE_ID: selectedTemplateId,
         VARIANT: selectedVariant,
-        OUTLINE: outline,
+        OUTLINE: effectiveOutline,
       },
       sources,
       sections: [],
@@ -489,7 +678,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     setAutoScroll(true);
     const res = await api.startGeneration({
       topic,
-      outline,
+      outline: effectiveOutline,
       sources,
       variant: selectedVariant,
     });
@@ -505,34 +694,34 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex overflow-hidden report-root">
       {/* Live Generation Paper Canvas */}
       {isGenerating ? (
-        <div className="flex-1 bg-slate-100/90 flex flex-col h-full overflow-hidden select-none">
+        <div className="flex-1 bg-slate-100/90 flex flex-col h-full overflow-hidden generation-studio">
           {/* Top Floating Glass Header */}
-          <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-8 py-4 shrink-0 shadow-xs z-10">
+          <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-8 py-4 shrink-0 shadow-xs z-10 generation-header">
             <div className="max-w-4xl mx-auto flex items-center justify-between">
               <div className="flex items-center space-x-3.5 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs shrink-0">
-                  <Sparkles className="w-5 h-5 animate-pulse" />
+                <div className="w-10 h-10 rounded-2xl ui-info-surface border flex items-center justify-center shadow-xs shrink-0">
+                  <Sparkles className="w-5 h-5" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center space-x-2">
                     <h3 className="text-sm font-extrabold text-slate-800 tracking-tight truncate">
                       {topic || 'Menyusun Laporan Akademik...'}
                     </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-extrabold border border-blue-200 shrink-0">
+                    <span className="ui-status-info px-2 py-0.5 rounded-full text-[10px] font-extrabold border shrink-0">
                       Batch {genProgress.batch} dari {genProgress.total}
                     </span>
                   </div>
                   <div className="flex items-center space-x-3 text-xs text-slate-500 mt-1">
                     <span className="flex items-center gap-1 font-semibold text-slate-700">
-                      <FileText className="w-3.5 h-3.5 text-blue-600" />
+                      <FileText className="w-3.5 h-3.5 text-brand-700" aria-hidden="true" />
                       <span>{recentSentences.length} Kalimat Disusun</span>
                     </span>
                     <span>•</span>
-                    <span className="flex items-center gap-1 text-emerald-700 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="flex items-center gap-1 text-brand-700 font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
                       <span>{recentSentences.filter((s) => s.status === 'terverifikasi').length} Terverifikasi</span>
                     </span>
                     <span>•</span>
@@ -545,9 +734,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 <button
                   type="button"
                   onClick={handleCancelGenerate}
-                  className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-xs active:scale-95"
+                  className="px-4 py-2 ui-status-danger border rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-xs active:scale-95"
                 >
-                  <Square className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
+                  <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
                   <span>Batalkan Generasi</span>
                 </button>
               </div>
@@ -556,7 +745,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
             {/* Smooth progress bar */}
             <div className="max-w-4xl mx-auto mt-3 bg-slate-100 rounded-full h-1.5 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full transition-all duration-500 rounded-full"
+                className="bg-brand-600 h-full transition-all duration-500 rounded-full"
                 style={{ width: `${Math.round((genProgress.batch / Math.max(1, genProgress.total)) * 100)}%` }}
               />
             </div>
@@ -568,7 +757,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
             onScroll={handleScroll}
             className="flex-1 overflow-y-auto p-6 md:p-8 flex justify-center"
           >
-            <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200/90 p-8 md:p-12 paper-sheet font-serif min-h-[600px] flex flex-col justify-between">
+            <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200/90 p-8 md:p-12 paper-sheet font-serif min-h-[600px] flex flex-col justify-between generation-paper">
               <div>
                 {/* Report Title on Paper */}
                 <div className="text-center pb-6 mb-8 border-b border-slate-200">
@@ -584,7 +773,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 <div className="text-slate-800 text-[15px] leading-relaxed md:leading-[1.85] text-justify space-y-4">
                   {recentSentences.length === 0 ? (
                     <div className="text-center py-24 text-slate-400 font-sans text-xs flex flex-col items-center space-y-2">
-                      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                      <Loader2 className="w-6 h-6 animate-spin text-brand-700" aria-hidden="true" />
                       <span>Mempersiapkan sintesis pustaka dan merancang kerangka bab...</span>
                     </div>
                   ) : (
@@ -595,7 +784,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                           <span
                             key={s.uid || idx}
                             className={`inline transition-all ${
-                              isLatest ? 'animate-sentence-born bg-blue-50/60 font-medium' : ''
+                               isLatest ? 'animate-sentence-born ui-info-surface font-medium' : ''
                             }`}
                           >
                             <span>{s.text} </span>
@@ -603,7 +792,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                         );
                       })}
                       {/* Blinking typing cursor at end */}
-                      <span className="inline-block w-1.5 h-4 bg-blue-600 animate-cursor-blink ml-1 align-middle rounded-xs" />
+                      <span className="inline-block w-1.5 h-4 bg-brand-600 animate-cursor-blink ml-1 align-middle rounded-xs" aria-hidden="true" />
                     </div>
                   )}
                   <div ref={streamEndRef} className="h-4" />
@@ -630,14 +819,17 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         </div>
       ) : (
         /* Normal Setup View */
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden report-studio">
           {/* Left Column: Sumber Referensi */}
-          <div className="w-96 border-r border-slate-200 bg-white flex flex-col justify-between shrink-0">
-            <div className="p-5 flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between mb-4">
+          <div className="w-96 border-r border-slate-200 bg-white flex flex-col justify-between shrink-0 report-source-desk">
+            <div className="p-5 flex-1 flex flex-col overflow-hidden source-desk-content">
+              <div className="flex items-center justify-between mb-4 source-desk-heading">
                 <div className="flex items-center space-x-2">
                   <BookOpen className="w-4 h-4 text-brand-600" />
-                  <h3 className="font-bold text-slate-800 text-sm">Sumber Referensi</h3>
+                  <div>
+                    <span className="studio-overline">01 / INPUT</span>
+                    <h3 className="font-bold text-slate-800 text-sm">Sumber Referensi</h3>
+                  </div>
                 </div>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                   {sources.length}
@@ -645,11 +837,11 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               </div>
 
               {/* Source action buttons */}
-              <div className="grid grid-cols-4 gap-1.5 mb-4">
+              <div className="grid grid-cols-4 gap-1.5 mb-4 source-action-grid">
                 <button
                   onClick={handleAddPdf}
                   disabled={loadingSource}
-                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center"
+                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-secondary"
                   title="Unggah berkas PDF native atau scan OCR"
                 >
                   <FilePlus className="w-4 h-4 text-brand-600" />
@@ -658,34 +850,34 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 <button
                   onClick={() => setDoiModal(true)}
                   disabled={loadingSource}
-                  className="p-2 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-100/60 text-purple-800 text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center"
+                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-ai"
                   title="Cari metadata resmi via DOI CrossRef"
                 >
-                  <Hash className="w-4 h-4 text-purple-600" />
+                  <Hash className="w-4 h-4" />
                   <span>Cari DOI</span>
                 </button>
                 <button
                   onClick={() => setWebUrlModal(true)}
                   disabled={loadingSource}
-                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center"
+                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-secondary"
                   title="Ambil teks dari link web atau jurnal"
                 >
-                  <Globe className="w-4 h-4 text-blue-600" />
+                  <Globe className="w-4 h-4" />
                   <span>Tautan Web</span>
                 </button>
                 <button
                   onClick={() => setManualTextModal(true)}
                   disabled={loadingSource}
-                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center"
+                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-secondary"
                   title="Tempel teks referensi langsung"
                 >
-                  <FileText className="w-4 h-4 text-amber-600" />
+                  <FileText className="w-4 h-4" />
                   <span>Manual</span>
                 </button>
               </div>
 
               {/* Source List */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 source-list">
                 {loadingSource && (
                   <div className="p-3 mb-2 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 text-xs flex items-center space-x-2 animate-pulse">
                     <Loader2 className="w-4 h-4 animate-spin text-brand-600 shrink-0" />
@@ -693,37 +885,51 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                   </div>
                 )}
                 {sources.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 text-xs">
-                    Belum ada sumber referensi.<br />Tambahkan PDF atau tautan web di atas.
+                  <div className="text-center py-12 text-slate-400 text-xs px-4">
+                    Belum ada sumber referensi.<br />
+                    Gunakan tombol <span className="font-semibold text-slate-600">PDF/OCR</span>, <span className="font-semibold text-slate-600">Cari DOI</span>, atau <span className="font-semibold text-slate-600">Manual</span> di atas untuk menambahkan naskah lengkap artikel ilmiah Anda.
                   </div>
                 ) : (
                   sources.map((s, idx) => {
                     const isSelected = selectedSourceIdx === idx;
                     return (
-                      <div
+                      <article
                         key={idx}
-                        onClick={() => setSelectedSourceIdx(idx)}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                        className={`source-card p-3 rounded-xl border text-left transition ${
                           isSelected
-                            ? 'border-brand-500 bg-brand-50/50 shadow-sm'
-                            : 'border-slate-200/80 hover:bg-slate-50'
+                            ? 'source-card-is-selected shadow-sm'
+                            : ''
                         }`}
                       >
                         <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0 pr-2">
-                            <div className="flex items-center gap-1.5 mb-1">
+                          <button
+                            type="button"
+                            className="source-card-select flex-1 min-w-0 pr-2 text-left"
+                            onClick={() => setSelectedSourceIdx(idx)}
+                            aria-pressed={isSelected}
+                            aria-label={`Pilih sumber ${idx + 1}: ${s.title || 'Tanpa Judul'}`}
+                          >
+                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                               <span className="text-[10px] font-bold uppercase px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
                                 {s.kind?.toUpperCase() || 'WEB'}
                               </span>
-                              {(s.text?.length || 0) > 8000 ? (
-                                <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  Naskah Lengkap ({Math.round((s.text?.length || 0) / 1000)}k karakter)
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                  Abstrak ({s.text?.length || 0} karakter)
-                                </span>
-                              )}
+                              {(() => {
+                                const info = describeSourceContent(s);
+                                const toneCls =
+                                  info.tone === 'ok'
+                                    ? 'bg-brand-50 text-brand-700 border border-brand-200'
+                                    : info.tone === 'danger'
+                                      ? 'ui-status-danger border'
+                                      : 'ui-status-warning border';
+                                return (
+                                  <span
+                                    className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${toneCls}`}
+                                    title={info.hint}
+                                  >
+                                    {info.label}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <h4 className="text-xs font-bold text-slate-800 truncate">
                               {idx + 1}. {s.title || 'Tanpa Judul'}
@@ -731,18 +937,19 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                             <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                               {s.authors?.map((a) => a.family).join(', ') || 'Tanpa Penulis'} ({s.year || 'n.d.'})
                             </p>
-                          </div>
+                          </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteSource(idx);
                             }}
-                            className="text-slate-400 hover:text-rose-600 p-1"
+                            className="source-card-delete text-slate-400 p-2"
+                            aria-label={`Hapus sumber ${idx + 1}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      </div>
+                      </article>
                     );
                   })
                 )}
@@ -751,14 +958,15 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
             {/* Selected source metadata editor drawer */}
             {selectedSourceIdx !== null && sources[selectedSourceIdx] && (
-              <div className="p-4 border-t border-slate-200 bg-slate-50 text-xs space-y-2">
+              <div className="p-4 border-t border-slate-200 bg-slate-50 text-xs space-y-2 source-metadata">
                 <div className="flex items-center justify-between font-bold text-slate-700">
                   <span>Koreksi Metadata Sumber #{selectedSourceIdx + 1}</span>
                   <button onClick={() => setSelectedSourceIdx(null)} className="text-slate-400 hover:text-slate-600">✕</button>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 font-semibold uppercase">Judul</label>
+                  <label htmlFor="meta-judul" className="text-[10px] text-slate-500 font-semibold uppercase">Judul</label>
                   <input
+                    id="meta-judul"
                     type="text"
                     value={sources[selectedSourceIdx].title || ''}
                     onChange={(e) => {
@@ -769,10 +977,41 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
                   />
                 </div>
+                <div>
+                  <label htmlFor="meta-penulis" className="text-[10px] text-slate-500 font-semibold uppercase">
+                    Penulis (pisahkan dengan ; bila lebih dari satu)
+                  </label>
+                  <input
+                    type="text"
+                    value={(sources[selectedSourceIdx].authors || [])
+                      .map((a) => [a.family, a.given].filter(Boolean).join(', '))
+                      .join('; ')}
+                    onChange={(e) => {
+                      // Aplikasi tidak menebak pemisahan nama penulis: mahasiswa
+                      // menuliskannya eksplisit, dipisah ";" (F8).
+                      const updated = [...sources];
+                      updated[selectedSourceIdx].authors = e.target.value
+                        .split(';')
+                        .map((part) => part.trim())
+                        .filter(Boolean)
+                        .map((part) => {
+                          const comma = part.indexOf(',');
+                          return comma > 0
+                            ? { family: part.slice(0, comma).trim(), given: part.slice(comma + 1).trim(), is_org: false, abbrev: '' }
+                            : { family: part, given: '', is_org: false, abbrev: '' };
+                        });
+                      setSources(updated);
+                    }}
+                    placeholder="Contoh: Santoso, A; Wijaya, B"
+                    id="meta-penulis"
+                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] text-slate-500 font-semibold uppercase">Tahun</label>
+                    <label htmlFor="meta-tahun" className="text-[10px] text-slate-500 font-semibold uppercase">Tahun</label>
                     <input
+                      id="meta-tahun"
                       type="text"
                       value={sources[selectedSourceIdx].year || ''}
                       onChange={(e) => {
@@ -784,8 +1023,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-500 font-semibold uppercase">Publikasi / Jurnal</label>
+                    <label htmlFor="meta-publikasi" className="text-[10px] text-slate-500 font-semibold uppercase">Publikasi / Jurnal</label>
                     <input
+                      id="meta-publikasi"
                       type="text"
                       value={sources[selectedSourceIdx].container || ''}
                       onChange={(e) => {
@@ -802,9 +1042,23 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
           </div>
 
           {/* Right Column: Pengaturan Laporan & Outline */}
-          <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto space-y-6 report-composer">
+            <div className="studio-hero">
+              <div className="studio-hero-copy">
+                <div className="studio-eyebrow"><span>GENERATOR LAPORAN</span><span>01 / 05</span></div>
+                <h1>Susun laporan dari sumber yang bisa ditinjau.</h1>
+                <p>Mulai dari bahan yang sudah Anda punya. Atur brief, bentuk outline, lalu biarkan AI menyusun teks yang tetap bisa diperiksa.</p>
+              </div>
+              <div className="studio-hero-meta" aria-label="Ringkasan pekerjaan">
+                <div><span className="studio-meta-label">SUMBER</span><strong>{sources.length}</strong></div>
+                <div><span className="studio-meta-label">OUTLINE</span><strong>{outline.length}</strong></div>
+                <div><span className="studio-meta-label">MODE</span><strong>{selectedVariant.toUpperCase()}</strong></div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between report-form-header">
               <div>
+                <span className="studio-overline">02 / BRIEF</span>
                 <h2 className="text-xl font-bold text-slate-800 tracking-tight">Formulir Pembuatan Laporan</h2>
                 <p className="text-sm text-slate-500 mt-1">
                   Tentukan judul, format varian fakultas, dan tinjau struktur outline bab sebelum AI mulai menulis.
@@ -821,10 +1075,10 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
             </div>
 
             {/* Judul Laporan */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-4">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-4 report-panel report-brief">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                  <label htmlFor="brief-judul" className="block text-xs font-bold uppercase tracking-wider text-slate-600">
                     Judul Laporan Akademik
                   </label>
                   <button
@@ -834,7 +1088,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border ${
                       sources.length === 0
                         ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-70'
-                        : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 shadow-sm active:scale-95'
+                        : 'ui-action-ai shadow-sm active:scale-95'
                     }`}
                     title={
                       sources.length === 0
@@ -844,18 +1098,19 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                   >
                     {generatingTitle ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span>Menyusun Judul AI...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                         <span>Saran Judul dari Jurnal (AI)</span>
                       </>
                     )}
                   </button>
                 </div>
                 <input
+                  id="brief-judul"
                   type="text"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
@@ -868,17 +1123,18 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                    <label htmlFor="brief-template" className="block text-xs font-bold uppercase tracking-wider text-slate-600">
                       Template Word (.docx)
                     </label>
                     {templates.length > 0 && selectedTemplateId && (
-                      <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span className="text-[10px] font-semibold text-brand-700 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-brand-600" />
                         <span>Format Terverifikasi</span>
                       </span>
                     )}
                   </div>
                   <select
+                    id="brief-template"
                     value={selectedTemplateId || ''}
                     onChange={(e) => setSelectedTemplateId(Number(e.target.value))}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 font-medium text-slate-800"
@@ -905,7 +1161,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                           <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]">
                             Spasi {selT?.spec?.spacing || '1.5'}
                           </span>
-                          <span className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold text-[10px]">
+                          <span className="ui-status-info px-2 py-0.5 rounded border font-semibold text-[10px]">
                             APA 7 Ready
                           </span>
                         </div>
@@ -915,22 +1171,28 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  <label htmlFor="brief-varian" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                     Varian Format Laporan
                   </label>
                   <select
-                    value={selectedVariant}
+                    id="brief-varian"
+                    value={variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase())?.code || selectedVariant}
                     onChange={(e) => handleVariantChange(e.target.value)}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 font-semibold text-brand-800"
                   >
-                    {variants.map((v) => (
-                      <option key={v.code} value={v.code}>
-                        {v.code === 'b' ? '⭐ Varian B (Baku): Makalah Kuliah Standar Dikti (4 Bab)' :
-                         v.code === 'a' ? '📚 Varian A: Makalah Tinjauan / Komparatif (Multi-Topik)' :
-                         v.code === 'c' ? '🔬 Varian C: Laporan Praktikum Laboratorium' :
-                         '✨ Format Bebas: Outline Kustom'}
-                      </option>
-                    ))}
+                    {variants.map((v) => {
+                      const c = v.code.toUpperCase();
+                      const label =
+                         c === 'B' ? 'Varian B (Baku): Makalah Kuliah Standar Dikti (4 Bab)' :
+                         c === 'A' ? 'Varian A: Makalah Tinjauan / Komparatif (Multi-Topik)' :
+                         c === 'C' ? 'Varian C: Laporan Praktikum Laboratorium' :
+                         'Format Bebas: Outline Kustom Mandiri';
+                      return (
+                        <option key={v.code} value={v.code}>
+                          {label}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -938,8 +1200,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               {/* Dosen & Matkul Selection */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Dosen Pembimbing</label>
+                  <label htmlFor="brief-dosen" className="block text-xs font-semibold text-slate-600 mb-1">Dosen Pembimbing</label>
                   <select
+                    id="brief-dosen"
                     value={selectedDosen}
                     onChange={(e) => setSelectedDosen(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
@@ -954,8 +1217,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Mata Kuliah</label>
+                  <label htmlFor="brief-matkul" className="block text-xs font-semibold text-slate-600 mb-1">Mata Kuliah</label>
                   <select
+                    id="brief-matkul"
                     value={selectedMatkul}
                     onChange={(e) => setSelectedMatkul(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
@@ -970,8 +1234,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Logo Kampus</label>
+                  <label htmlFor="brief-logo" className="block text-xs font-semibold text-slate-600 mb-1">Logo Kampus</label>
                   <select
+                    id="brief-logo"
                     value={selectedLogoPath}
                     onChange={(e) => setSelectedLogoPath(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
@@ -988,39 +1253,60 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
             </div>
 
             {/* Outline Box */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-3 report-panel report-outline">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">Struktur Bab & Outline</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {selectedVariant === 'bebas'
-                      ? 'Format bebas: Anda bisa mengedit outline sendiri atau meminta AI mengusulkannya.'
-                      : 'Format baku terkunci: Penomoran BAB 1 s/d BAB 4 mengikuti spesifikasi varian terpilih.'}
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-brand-600" />
+                    <h3 className="text-sm font-bold text-slate-800">Struktur Bab & Outline Laporan</h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Daftar bab yang akan ditulis AI (satu bab per baris). Anda bebas mengedit judul, menambah bab baru, atau memuat ulang format baku.
                   </p>
                 </div>
-                {selectedVariant === 'bebas' && (
+                <div className="flex items-center flex-wrap gap-2 shrink-0">
                   <button
-                    onClick={handleSuggestOutline}
-                    disabled={suggestingOutline}
-                    className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-brand-200"
+                    type="button"
+                    onClick={handleAddChapter}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1 border border-slate-200 transition"
+                    title="Tambah bab baru ke akhir outline"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{suggestingOutline ? 'Menyusun...' : 'Usulkan Outline AI'}</span>
+                    <Plus className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Tambah Bab</span>
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={handleResetOutline}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1 border border-slate-200 transition"
+                    title="Muat ulang outline baku sesuai varian format terpilih"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Muat Ulang Baku</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSuggestOutline}
+                    disabled={suggestingOutline || sources.length === 0}
+                    className="px-2.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-lg text-xs font-semibold flex items-center space-x-1 border border-brand-200 transition disabled:opacity-50"
+                    title="Gunakan AI untuk merumuskan usulan bab dari topik dan naskah jurnal"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                    <span>{suggestingOutline ? 'Menyusun...' : 'Usulkan outline'}</span>
+                  </button>
+                </div>
               </div>
 
               <textarea
                 value={outline.join('\n')}
-                onChange={(e) => selectedVariant === 'bebas' && setOutline(e.target.value.split('\n'))}
-                readOnly={selectedVariant !== 'bebas'}
-                rows={8}
-                className={`w-full p-4 rounded-xl text-xs font-mono border ${
-                  selectedVariant === 'bebas'
-                    ? 'bg-slate-50 border-slate-200'
-                    : 'bg-slate-100/70 border-slate-200 text-slate-700 cursor-not-allowed'
-                }`}
+                onChange={(e) => setOutline(e.target.value.split('\n'))}
+                placeholder={"BAB 1. PENDAHULUAN\nBAB 2. TINJAUAN PUSTAKA\nBAB 3. HASIL DAN PEMBAHASAN\nBAB 4. KESIMPULAN DAN SARAN"}
+                rows={7}
+                className="w-full p-3.5 rounded-xl text-xs font-mono border bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition leading-relaxed"
               />
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>{outline.filter((x) => x.trim()).length} bab terdaftar</span>
+                <span>Tip: tulis satu bab per baris, contoh: <code>BAB 1. PENDAHULUAN</code></span>
+              </div>
             </div>
 
             {/* Generate Action Button */}
@@ -1040,15 +1326,15 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
       {/* Web URL Modal */}
       {webUrlModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-800 mb-2">Tambah Tautan Web</h3>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" role="presentation" onClick={() => setWebUrlModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200" role="dialog" aria-modal="true" aria-labelledby="web-url-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <h3 id="web-url-dialog-title" className="text-base font-bold text-slate-800 mb-2">Tambah Tautan Web</h3>
             <p className="text-xs text-slate-500 mb-3">
               Mendukung tautan halaman artikel ilmiah (ArXiv, OJS kampus, Neliti) maupun berkas PDF langsung.
             </p>
-            <div className="mb-4 p-2.5 bg-blue-50/60 border border-blue-200/60 rounded-xl text-[11px] text-blue-800 space-y-1">
-              <p>💡 <strong>Catatan Pembacaan Tautan:</strong></p>
-              <ul className="list-disc list-inside space-y-0.5 text-blue-700">
+            <div className="mb-4 p-2.5 ui-info-surface border rounded-xl text-[11px] space-y-1">
+              <p><strong>Catatan pembacaan tautan:</strong></p>
+              <ul className="list-disc list-inside space-y-0.5">
                 <li>Jika tersedia file PDF Open Access, sistem otomatis mengunduh <strong>naskah lengkap</strong>.</li>
                 <li>Jika situs jurnal mengunci PDF dengan paywall/login, sistem hanya akan membaca <strong>abstrak & metadata</strong>.</li>
               </ul>
@@ -1082,9 +1368,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
       {/* Manual Text Modal */}
       {manualTextModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-800 mb-2">Tempel Teks Sumber Manual</h3>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" role="presentation" onClick={() => setManualTextModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200" role="dialog" aria-modal="true" aria-labelledby="manual-text-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <h3 id="manual-text-dialog-title" className="text-base font-bold text-slate-800 mb-2">Tempel Teks Sumber Manual</h3>
             <textarea
               value={manualTextInput}
               onChange={(e) => setManualTextInput(e.target.value)}
@@ -1113,20 +1399,20 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       )}
       {/* DOI Resolver Modal */}
       {doiModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn" role="presentation" onClick={() => setDoiModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200" role="dialog" aria-modal="true" aria-labelledby="doi-dialog-title" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center space-x-3 mb-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700">
+              <div className="w-9 h-9 rounded-xl ui-info-surface border flex items-center justify-center">
                 <Hash className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-800">Cari Referensi via DOI (CrossRef)</h3>
+                <h3 id="doi-dialog-title" className="text-base font-bold text-slate-800">Cari Referensi via DOI (CrossRef)</h3>
                 <p className="text-xs text-slate-500">Metadata bibliografi APA 7 diambil langsung dan resmi dari CrossRef.</p>
               </div>
             </div>
-            <div className="mb-4 p-2.5 bg-purple-50/60 border border-purple-200/60 rounded-xl text-[11px] text-purple-900 space-y-1">
-              <p>💡 <strong>Contoh input yang didukung:</strong></p>
-              <ul className="list-disc list-inside space-y-0.5 text-purple-800">
+            <div className="mb-4 p-2.5 ui-info-surface border rounded-xl text-[11px] space-y-1">
+              <p><strong>Contoh input yang didukung:</strong></p>
+              <ul className="list-disc list-inside space-y-0.5">
                 <li><code>10.1016/j.biortech.2020.123456</code></li>
                 <li><code>https://doi.org/10.1038/s41586-020-2649-2</code></li>
               </ul>
@@ -1151,7 +1437,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 type="button"
                 onClick={handleResolveDoi}
                 disabled={resolvingDoi || !doiInput.trim()}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5"
+                className="px-5 py-2 ui-action-primary rounded-xl text-xs font-semibold flex items-center space-x-1.5"
               >
                 <Search className="w-3.5 h-3.5" />
                 <span>{resolvingDoi ? 'Menghubungi CrossRef...' : 'Cari & Tambah'}</span>
@@ -1163,8 +1449,8 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
       {/* Multi-Project & Draft Manager Modal */}
       {projectModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col justify-between">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn" role="presentation" onClick={() => setProjectModalOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col justify-between" role="dialog" aria-modal="true" aria-labelledby="project-dialog-title" onClick={(event) => event.stopPropagation()}>
             <div>
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
                 <div className="flex items-center space-x-3">
@@ -1172,7 +1458,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                     <FolderOpen className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-800">Manajemen Draf & Proyek Laporan</h3>
+                    <h3 id="project-dialog-title" className="text-base font-bold text-slate-800">Manajemen Draf & Proyek Laporan</h3>
                     <p className="text-xs text-slate-500">Buka kembali pekerjaan sebelumnya atau simpan draf dengan nama khusus.</p>
                   </div>
                 </div>
@@ -1235,7 +1521,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                           <button
                             type="button"
                             onClick={() => handleLoadProject(d.draft_id)}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs"
+                            className="px-3 py-1 ui-action-primary rounded-lg text-xs font-semibold shadow-xs"
                           >
                             Buka
                           </button>
@@ -1243,7 +1529,8 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                         <button
                           type="button"
                           onClick={() => handleDeleteProject(d.draft_id)}
-                          className="p-1 text-slate-400 hover:text-rose-600"
+                           className="source-card-delete text-slate-400 p-2"
+                           aria-label={`Hapus draf ${d.title}`}
                           title="Hapus draf ini"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1259,7 +1546,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               <button
                 type="button"
                 onClick={handleNewBlankProject}
-                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold flex items-center space-x-1"
+                className="px-3 py-1.5 ui-status-danger border rounded-lg text-xs font-semibold flex items-center space-x-1"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Mulai Lembar Kerja Kosong Baru</span>

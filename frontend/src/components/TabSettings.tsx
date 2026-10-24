@@ -87,6 +87,10 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
       const res = await api.testAiConnection(config.ai_base_url, config.ai_api_key, config.ai_model);
       if (res) {
         setTestResult(res);
+        // Status sidebar jangan menggantung stale: umumkan hasil tes terbaru.
+        window.dispatchEvent(new CustomEvent('ai-status-changed', {
+          detail: { connected: !!res.ok, model: config.ai_model },
+        }));
       }
     } catch (e: any) {
       setTestResult({ ok: false, message: e.message || 'Koneksi gagal.' });
@@ -119,8 +123,8 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
   );
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto">
-      <div className="mb-6">
+    <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto utility-studio">
+      <div className="mb-6 utility-header">
         <h2 className="text-xl font-bold text-slate-800 tracking-tight">Pengaturan Layanan AI</h2>
         <p className="text-sm text-slate-500 mt-1">
           Hubungkan aplikasi ke penyedia AI lokal (LM Studio, Ollama) atau layanan cloud (OpenAI, OpenRouter).
@@ -130,13 +134,14 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden p-6 space-y-6">
         {/* Base URL */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+          <label htmlFor="ai-base-url" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
             Base URL Endpoint (OpenAI-compatible)
           </label>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Globe className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
               <input
+                id="ai-base-url"
                 type="text"
                 value={config.ai_base_url}
                 onChange={(e) => setConfig({ ...config, ai_base_url: e.target.value })}
@@ -197,7 +202,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
         {/* API Key */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+            <label htmlFor="ai-api-key" className="block text-xs font-bold uppercase tracking-wider text-slate-600">
               API Key (Opsional untuk LLM Lokal)
             </label>
             {config.ai_api_key_set && (
@@ -209,6 +214,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
           <div className="relative">
             <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
             <input
+              id="ai-api-key"
               type={showKey ? 'text' : 'password'}
               value={config.ai_api_key}
               onChange={(e) => setConfig({ ...config, ai_api_key: e.target.value })}
@@ -232,7 +238,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+              <label htmlFor="ai-model" className="block text-xs font-bold uppercase tracking-wider text-slate-600">
                 Nama Model AI
               </label>
               <button
@@ -287,6 +293,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActiv
               <div className="relative">
                 <Bot className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                 <input
+                  id="ai-model"
                   type="text"
                   value={config.ai_model}
                   onChange={(e) => setConfig({ ...config, ai_model: e.target.value })}

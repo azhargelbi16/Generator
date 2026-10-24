@@ -109,3 +109,4 @@ export interface PyWebViewApiContract {
   load_named_draft(draftId: string): Promise<DraftStatePayload | null>;
   delete_named_draft(draftId: string): Promise<{ success: boolean }>;
 }
+
