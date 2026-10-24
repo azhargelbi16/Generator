@@ -12,6 +12,26 @@ from ..ai.citation import Author, Source
 
 DRAFT_ACTIVE_ID = "aktif"
 
+# Ambang cakupan isi sumber (karakter). Di bawah ini, teks yang tersimpan
+# kemungkinan besar hanya abstrak/metadata — AI tidak punya bahan dari
+# "isi dalam" jurnal untuk dikutip (masukan UAT: sumber harus berisi jurnal,
+# bukan sekadar abstrak).
+_FULLTEXT_MIN_CHARS = 1800
+_ABSTRACT_MAX_CHARS = 600
+
+
+def content_status(kind: str, text: str) -> str:
+    """Klasifikasi cakupan isi sumber: fulltext | partial | abstract | metadata_only."""
+    n = len((text or "").strip())
+    if kind == "doi" and n < 250:
+        # DOI tanpa abstrak CrossRef: hanya kalimat judul, tidak ada isi kutipan.
+        return "metadata_only"
+    if n >= _FULLTEXT_MIN_CHARS:
+        return "fulltext"
+    if n > _ABSTRACT_MAX_CHARS:
+        return "partial"
+    return "abstract"
+
 
 def normalize_metadata(doc: dict[str, str]) -> dict[str, str]:
     """Samakan kunci metadata dokumen dengan yang dibaca `merge_metadata`.
@@ -37,6 +57,7 @@ def source_to_record(source: Source, text: str, kind: str) -> dict:
     """Ubah hasil AI menjadi dict draf; penulis disalin apa adanya sebagai usulan."""
     return {
         "kind": kind,
+        "content_status": content_status(kind, text),
         "title": source.title,
         "year": source.year,
         "container": source.container,

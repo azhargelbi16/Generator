@@ -1,9 +1,12 @@
 // API Client communicating with Python backend via pywebview.api
+import type { PyWebViewApiContract, ApiContractMetadata } from './api-contract';
+export { API_VERSION } from './api-contract';
+export type { PyWebViewApiContract, ApiContractMetadata };
 
 declare global {
   interface Window {
     pywebview?: {
-      api: Record<string, (...args: any[]) => Promise<any>>;
+      api: PyWebViewApiContract & Record<string, (...args: any[]) => Promise<any>>;
     };
   }
 }
@@ -12,6 +15,8 @@ export interface Profile {
   nama: string;
   nim: string;
   prodi: string;
+  fakultas?: string;
+  institusi?: string;
 }
 
 export interface Dosen {
@@ -120,6 +125,18 @@ export interface FormatVariant {
   outline_titles: string[];
 }
 
+export interface DocumentAnalytics {
+  total_words: number;
+  total_chars: number;
+  total_sentences: number;
+  total_paragraphs: number;
+  reading_time_minutes: number;
+  citation_coverage_pct: number;
+  academic_score: number;
+  readability_score: number;
+  section_distribution: Array<{ title: string; words: number }>;
+}
+
 export interface SavedDraftItem {
   draft_id: string;
   title: string;
@@ -130,10 +147,63 @@ export interface SavedDraftItem {
   mtime: number;
 }
 
+let pywebviewReadyPromise: Promise<boolean> | null = null;
+
+export function waitForPywebview(timeoutMs = 6000): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  if (window.pywebview?.api) return Promise.resolve(true);
+
+  if (!pywebviewReadyPromise) {
+    pywebviewReadyPromise = new Promise<boolean>((resolve) => {
+      let resolved = false;
+
+      const cleanup = () => {
+        window.removeEventListener('pywebviewready', onReady);
+        clearInterval(checkInterval);
+        clearTimeout(timer);
+      };
+
+      const onReady = () => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          resolve(true);
+        }
+      };
+
+      window.addEventListener('pywebviewready', onReady);
+
+      const checkInterval = setInterval(() => {
+        if (window.pywebview?.api) {
+          onReady();
+        }
+      }, 30);
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          resolve(Boolean(window.pywebview?.api));
+        }
+      }, timeoutMs);
+    });
+  }
+
+  return pywebviewReadyPromise;
+}
+
 // Fallback helper for pywebview API
 async function callApi<T = any>(method: string, ...args: any[]): Promise<T> {
+  if (!window.pywebview?.api) {
+    await waitForPywebview();
+  }
   if (window.pywebview?.api && typeof window.pywebview.api[method] === 'function') {
-    return await window.pywebview.api[method](...args);
+    try {
+      return await window.pywebview.api[method](...args);
+    } catch (err) {
+      console.error(`[API Error] ${method}:`, err);
+      throw err;
+    }
   }
   console.warn(`[API Mock] ${method} called without pywebview bridge:`, args);
   return null as any;
@@ -211,6 +281,15 @@ export const api = {
     callApi<{ labels: Record<string, string>; references: string[]; cited_ids: number[] }>('compute_citations_and_references', sources, sections, style),
   markNonFactualDone: (sections: Section[], currentDone: string[]) =>
     callApi<{ success: boolean; done: string[] }>('mark_non_factual_done', sections, currentDone),
+
+getDocumentAnalytics: (sections: Section[], sources: SourceRecord[]) =>
+    callApi<DocumentAnalytics>('get_document_analytics', sections, sources),
+  openOutputFolder: () =>
+    callApi<{ success: boolean; error?: string }>('open_output_folder'),
+
+  // Versioning & Contract
+  getApiVersion: () => callApi<string>('get_api_version'),
+  getApiContract: () => callApi<ApiContractMetadata>('get_api_contract'),
 
   // Preflight & Export
   runPreflight: (state: any) =>

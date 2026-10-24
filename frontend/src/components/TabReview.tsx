@@ -19,22 +19,25 @@ import {
   Maximize2,
   ListOrdered,
   Eye,
-  EyeOff
+  EyeOff,
+  FolderOpen
 } from 'lucide-react';
 import { 
   api, 
   Section, 
   Sentence, 
   SourceRecord, 
-  SentenceStatus 
+  SentenceStatus,
+  DocumentAnalytics
 } from '../lib/api';
 import { toast } from '../lib/toast';
 
 interface TabReviewProps {
   onExportSuccess: (path: string) => void;
+  isActive?: boolean;
 }
 
-export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
+export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive = false }) => {
   const [sections, setSections] = useState<Section[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [statuses, setStatuses] = useState<SentenceStatus[]>([]);
@@ -58,10 +61,45 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
   const [isExporting, setIsExporting] = useState(false);
 
   // Canvas Studio & View Controls
+  const [analytics, setAnalytics] = useState<DocumentAnalytics | null>(null);
   const [zoom, setZoom] = useState<number>(100);
   const [fitWidth, setFitWidth] = useState<boolean>(false);
   const [showOutline, setShowOutline] = useState<boolean>(true);
   const [readingMode, setReadingMode] = useState<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [filterMode, setFilterMode] = useState<'all' | 'unverified' | 'verified'>('all');
+  const [hoveredCard, setHoveredCard] = useState<{
+    sent: Sentence;
+    status: string;
+    source: SourceRecord | null;
+    x: number;
+    y: number;
+  } | null>(null);
+  const hoverTimeoutRef = React.useRef<any>(null);
+
+  const handleSentenceMouseEnter = (e: React.MouseEvent, sent: Sentence) => {
+    clearTimeout(hoverTimeoutRef.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const status = getSentenceStatus(sent.uid);
+    const src = sent.source_ids?.length > 0 ? sources[sent.source_ids[0]] : null;
+    
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredCard({
+        sent,
+        status,
+        source: src || null,
+        x: Math.min(window.innerWidth - 340, Math.max(20, rect.left)),
+        y: Math.min(window.innerHeight - 200, rect.bottom + 8),
+      });
+    }, 180);
+  };
+
+  const handleSentenceMouseLeave = () => {
+    clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredCard(null);
+    }, 120);
+  };
 
   const handleZoomIn = () => setZoom((prev) => Math.min(150, prev + 15));
   const handleZoomOut = () => setZoom((prev) => Math.max(70, prev - 15));
@@ -78,6 +116,12 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
     loadDraft();
   }, []);
 
+  useEffect(() => {
+    if (isActive) {
+      loadDraft();
+    }
+  }, [isActive]);
+
   const loadDraft = async () => {
     try {
       const draft = await api.loadActiveDraft();
@@ -88,13 +132,19 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
         const done = new Set(draft.done || []);
         setDoneUids(done);
 
-        // Verify sentences
-        const verifiedStatuses = await api.verifyDocument(draft.sections, s);
-        if (verifiedStatuses) setStatuses(verifiedStatuses);
+        // Seamless Concurrent Handshake: Run verification, citations & analytics in parallel (Zero-Lag)
+        const [verifiedStatuses, cit, stats] = await Promise.all([
+          api.verifyDocument(draft.sections, s),
+          api.computeCitations(s, draft.sections, 'et_al'),
+          api.getDocumentAnalytics(draft.sections, s).catch((err) => {
+            console.warn('Gagal memuat analitik:', err);
+            return null;
+          }),
+        ]);
 
-        // Compute APA citations
-        const cit = await api.computeCitations(s, draft.sections, 'et_al');
+        if (verifiedStatuses) setStatuses(verifiedStatuses);
         if (cit) setCitations({ labels: cit.labels, references: cit.references });
+        if (stats) setAnalytics(stats);
       }
     } catch (e) {
       console.error(e);
@@ -247,10 +297,15 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
   };
 
   const saveCurrentDraft = (curSections: Section[], curDone: Set<string>) => {
+    setSaveStatus('saving');
     api.saveActiveDraft({
       sections: curSections,
       sources,
       done: Array.from(curDone),
+    }).then(() => {
+      setTimeout(() => setSaveStatus('saved'), 400);
+    }).catch(() => {
+      setSaveStatus('saved');
     });
   };
 
@@ -351,6 +406,72 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
           <span className="flex items-center space-x-1 text-slate-500 font-medium">
             <span>{nonFactualCount} Opini/Pengantar</span>
           </span>
+
+          {/* SaaS Unicorn Academic Analytics Bar */}
+          {analytics && (
+            <div className="hidden xl:flex items-center space-x-2 pl-3 border-l border-slate-200">
+              <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                {analytics.total_words.toLocaleString('id-ID')} kata (~{analytics.reading_time_minutes} mnt baca)
+              </span>
+              <span className={`px-2.5 py-1 rounded-full font-semibold border ${
+                analytics.academic_score >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
+                Skor Kualitas: {analytics.academic_score}/100
+              </span>
+              <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
+                Sitasi: {analytics.citation_coverage_pct}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* NotebookLM Studio Quick Filter Pills */}
+        <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs mr-2">
+          <button
+            type="button"
+            onClick={() => setFilterMode('all')}
+            className={`px-3 py-1 rounded-lg font-semibold transition ${
+              filterMode === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Semua
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterMode('unverified')}
+            className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${
+              filterMode === 'unverified' ? 'bg-amber-500 text-white shadow-xs' : 'text-amber-700 hover:bg-amber-50'
+            }`}
+          >
+            <span>Perlu Ditinjau</span>
+            {needsReviewCount + unverifiedCount > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                filterMode === 'unverified' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-800'
+              }`}>
+                {needsReviewCount + unverifiedCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterMode('verified')}
+            className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${
+              filterMode === 'verified' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-700 hover:bg-emerald-50'
+            }`}
+          >
+            <span>Terverifikasi</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              filterMode === 'verified' ? 'bg-white/30 text-white' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {verifiedCount}
+            </span>
+          </button>
+        </div>
+
+        {/* NotebookLM Autosave Status Pill */}
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-medium text-slate-600 mr-2">
+          <span className={`w-2 h-2 rounded-full ${saveStatus === 'saving' ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`} />
+          <span>{saveStatus === 'saving' ? 'Menyimpan...' : '✓ Tersimpan (Autosaved)'}</span>
         </div>
 
         {/* Action Buttons & Canvas Controls */}
@@ -550,23 +671,33 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
                           }
                         }
 
+                        const isDimmed =
+                          (filterMode === 'unverified' && status !== 'perlu_ditinjau' && status !== 'belum_terverifikasi') ||
+                          (filterMode === 'verified' && status !== 'terverifikasi');
+
                         return (
                           <span
                             key={sent.uid}
                             onClick={() => handleSentenceClick(sent)}
+                            onMouseEnter={(e) => handleSentenceMouseEnter(e, sent)}
+                            onMouseLeave={handleSentenceMouseLeave}
                             className={`cursor-pointer transition-all duration-150 relative rounded px-0.5 ${
+                              isDimmed ? 'opacity-25' : ''
+                            } ${
                               isSelected
                                 ? 'bg-amber-200/90 text-slate-900 ring-2 ring-amber-400 font-medium'
                                 : status === 'perlu_ditinjau' && !isDone
-                                ? 'underline decoration-wavy decoration-amber-500 decoration-1 text-slate-900'
+                                ? 'underline decoration-wavy decoration-amber-500 decoration-1 text-slate-900 bg-amber-50/50'
                                 : (status === 'belum_terverifikasi' || status === 'tidak_terverifikasi') && !isDone
-                                ? 'underline decoration-wavy decoration-rose-400 decoration-1 text-slate-900'
-                                : 'hover:bg-amber-50'
+                                ? 'underline decoration-wavy decoration-rose-400 decoration-1 text-slate-900 bg-rose-50/40'
+                                : status === 'terverifikasi' && filterMode === 'verified'
+                                ? 'bg-emerald-50 text-emerald-950 font-medium'
+                                : 'hover:bg-brand-50/80 hover:text-brand-900'
                             }`}
                           >
                             <span>{sent.text}</span>
                             {citationText && (
-                              <span className="font-sans font-normal text-slate-600 text-[13px]">
+                              <span className="font-sans font-semibold text-brand-700 bg-brand-50 px-1.5 py-0.2 rounded border border-brand-200/60 text-[12px] ml-1 shadow-2xs">
                                 {citationText}
                               </span>
                             )}
@@ -793,6 +924,58 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess }) => {
           </div>
         )}
       </div>
+
+      {/* Floating NotebookLM Grounding Popover Card */}
+      {hoveredCard && (
+        <div
+          style={{ top: `${hoveredCard.y}px`, left: `${hoveredCard.x}px` }}
+          className="fixed z-50 w-84 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 p-3.5 space-y-2.5 animate-fadeIn font-sans text-xs pointer-events-none transition-all duration-150"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <span className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
+              <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+              <span>Bukti Sitasi Sumber</span>
+            </span>
+            <span
+              className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                hoveredCard.status === 'terverifikasi'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : hoveredCard.status === 'perlu_ditinjau'
+                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                  : hoveredCard.status === 'bukan_klaim' || hoveredCard.status === 'bukan_klaim_faktual'
+                  ? 'bg-slate-100 text-slate-600'
+                  : 'bg-rose-100 text-rose-800'
+              }`}
+            >
+              {hoveredCard.status === 'terverifikasi' ? '✓ Terverifikasi' :
+               hoveredCard.status === 'perlu_ditinjau' ? '⚠️ Perlu Ditinjau' :
+               hoveredCard.status === 'bukan_klaim' || hoveredCard.status === 'bukan_klaim_faktual' ? 'Opini / Pengantar' :
+               '✗ Belum Terverifikasi'}
+            </span>
+          </div>
+
+          {hoveredCard.sent.quote ? (
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[11px] text-slate-700 font-serif italic leading-relaxed">
+              "{hoveredCard.sent.quote}"
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-400 italic">
+              Kalimat transisi / sintesis tanpa kutipan langsung.
+            </div>
+          )}
+
+          {hoveredCard.source && (
+            <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+              <span className="truncate max-w-[210px] font-medium text-slate-700">
+                📄 {hoveredCard.source.title}
+              </span>
+              <span className="font-semibold text-brand-700 shrink-0 ml-1">
+                {hoveredCard.source.authors?.[0]?.family || 'Penulis'} ({hoveredCard.source.year || 'n.d.'})
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Preflight Export Modal */}
       {exportModalOpen && (

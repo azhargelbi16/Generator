@@ -15,12 +15,16 @@ import {
 import { api, Profile, Dosen, MataKuliah, Logo } from '../lib/api';
 import { toast } from '../lib/toast';
 
-export const TabData: React.FC = () => {
+interface TabDataProps {
+  isActive?: boolean;
+}
+
+export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
   const [activeSubTab, setActiveSubTab] = useState<'profil' | 'dosen' | 'matkul' | 'logo'>('profil');
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   // Profil state
-  const [profile, setProfile] = useState<Profile>({ nama: '', nim: '', prodi: '' });
+  const [profile, setProfile] = useState<Profile>({ nama: '', nim: '', prodi: '', fakultas: '', institusi: '' });
   const [profileSaved, setProfileSaved] = useState(false);
 
   // Dosen state
@@ -39,6 +43,12 @@ export const TabData: React.FC = () => {
   useEffect(() => {
     loadAllData();
   }, []);
+
+  useEffect(() => {
+    if (isActive) {
+      loadAllData();
+    }
+  }, [isActive]);
 
   const loadAllData = async () => {
     try {
@@ -61,6 +71,7 @@ export const TabData: React.FC = () => {
     const res = await api.saveProfile(profile);
     if (res?.success) {
       setProfileSaved(true);
+      toast.success('Data profil mahasiswa & institusi berhasil disimpan!');
       setTimeout(() => setProfileSaved(false), 2500);
     }
   };
@@ -220,6 +231,32 @@ export const TabData: React.FC = () => {
                   value={profile.prodi}
                   onChange={(e) => setProfile({ ...profile, prodi: e.target.value })}
                   placeholder="Contoh: Teknik Informatika"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Fakultas
+                </label>
+                <input
+                  type="text"
+                  value={profile.fakultas || ''}
+                  onChange={(e) => setProfile({ ...profile, fakultas: e.target.value })}
+                  placeholder="Contoh: Fakultas Ilmu Komputer"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Perguruan Tinggi / Institusi
+                </label>
+                <input
+                  type="text"
+                  value={profile.institusi || ''}
+                  onChange={(e) => setProfile({ ...profile, institusi: e.target.value })}
+                  placeholder="Contoh: Universitas Jember"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                 />
               </div>

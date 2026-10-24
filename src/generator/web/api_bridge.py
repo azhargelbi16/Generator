@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import threading
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import webview
 
@@ -28,6 +30,46 @@ from ..sources.records import (
 from ..verification import verify_sections, STATUS_VERIFIED, STATUS_NEEDS_REVIEW, STATUS_UNVERIFIED, STATUS_NON_FACTUAL
 
 log = logging.getLogger("generator.web.api")
+
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([A-Z0-9_]+)\s*\}\}")
+
+
+def _leftover_placeholders(docx_path: Path, limit: int = 5) -> list[str]:
+    """Penanda {{...}} yang masih tersisa di dokumen hasil render.
+
+    Memeriksa paragraf, tabel, serta header/footer; janji aplikasi adalah
+    penanda tidak pernah tercetak mentah di berkas keluaran.
+    """
+    from docx import Document  # impor lokal: python-docx cukup berat untuk startup
+
+    try:
+        document = Document(str(docx_path))
+    except Exception:
+        log.exception("Gagal membuka hasil ekspor untuk pemeriksaan penanda")
+        return []
+
+    def _texts() -> Iterator[str]:
+        for paragraph in document.paragraphs:
+            yield paragraph.text
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        yield paragraph.text
+        for section in document.sections:
+            for part in (section.header, section.footer):
+                for paragraph in part.paragraphs:
+                    yield paragraph.text
+
+    found: list[str] = []
+    for text in _texts():
+        for match in _PLACEHOLDER_RE.finditer(text):
+            marker = match.group(1)
+            if marker not in found:
+                found.append(marker)
+                if len(found) >= limit:
+                    return found
+    return found
 
 
 class ApiBridge:
@@ -54,6 +96,18 @@ class ApiBridge:
             self._window.evaluate_js(script)
         except Exception as e:
             log.warning(f"Failed to emit JS event {event_name}: {e}")
+
+    # =========================================================================
+    # VERSIONING & API CONTRACT (Formal Schema v2.0.0)
+    # =========================================================================
+
+    def get_api_version(self) -> str:
+        from .contract import API_VERSION
+        return API_VERSION
+
+    def get_api_contract(self) -> dict[str, Any]:
+        from .contract import get_contract_metadata
+        return get_contract_metadata()
 
     # =========================================================================
     # CONFIG & AI SERVICE
@@ -129,7 +183,13 @@ class ApiBridge:
 
     def get_profile(self) -> dict[str, str]:
         p = self.db.get_profil()
-        return {"nama": p.nama, "nim": p.nim, "prodi": p.prodi}
+        return {
+            "nama": p.nama,
+            "nim": p.nim,
+            "prodi": p.prodi,
+            "fakultas": getattr(p, "fakultas", ""),
+            "institusi": getattr(p, "institusi", ""),
+        }
 
     def save_profile(self, data: dict[str, str]) -> dict[str, Any]:
         self.db.set_profil(
@@ -137,6 +197,8 @@ class ApiBridge:
                 nama=str(data.get("nama", "")).strip(),
                 nim=str(data.get("nim", "")).strip(),
                 prodi=str(data.get("prodi", "")).strip(),
+                fakultas=str(data.get("fakultas", "")).strip(),
+                institusi=str(data.get("institusi", "")).strip(),
             )
         )
         return {"success": True}
@@ -205,7 +267,7 @@ class ApiBridge:
         if not self._window:
             return {"cancelled": True}
         file_types = ("Image files (*.png;*.jpg;*.jpeg;*.bmp)", "All files (*.*)")
-        res = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False, file_types=file_types)
+        res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types)
         if not res or len(res) == 0:
             return {"cancelled": True}
 
@@ -503,7 +565,7 @@ class ApiBridge:
         if not self._window:
             return {"cancelled": True}
         file_types = ("Word Document (*.docx)", "All files (*.*)")
-        res = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False, file_types=file_types)
+        res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types)
         if not res or len(res) == 0:
             return {"cancelled": True}
 
@@ -558,7 +620,7 @@ class ApiBridge:
         if not self._window:
             return {"cancelled": True}
         file_types = ("PDF Files (*.pdf)", "All files (*.*)")
-        res = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False, file_types=file_types)
+        res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types)
         if not res or len(res) == 0:
             return {"cancelled": True}
 
@@ -617,12 +679,12 @@ class ApiBridge:
     def add_web_source(self, url: str) -> dict[str, Any]:
         url = url.strip()
         if not url:
-            return {"error": "URL tidak boleh kosong."}
+            return {"success": False, "error": "URL tidak boleh kosong."}
         try:
             text, meta = web_reader.fetch(url)
             meta = normalize_metadata(meta)
         except Exception as e:
-            return {"error": f"Gagal mengambil halaman web: {e}"}
+            return {"success": False, "error": f"Gagal mengambil halaman web: {e}"}
 
         cl = AIClient(self._cfg)
         try:
@@ -757,12 +819,12 @@ class ApiBridge:
     def resolve_doi_source(self, doi: str) -> dict[str, Any]:
         doi = doi.strip()
         if not doi:
-            return {"error": "DOI tidak boleh kosong."}
+            return {"success": False, "error": "DOI tidak boleh kosong."}
         try:
             record = doi_resolver.fetch_doi_metadata(doi)
             return {"success": True, "record": record}
         except Exception as e:
-            return {"error": f"Gagal mengambil metadata DOI: {e}"}
+            return {"success": False, "error": f"Gagal mengambil metadata DOI: {e}"}
 
     # =========================================================================
     # FORMATS & OUTLINES
@@ -823,17 +885,100 @@ class ApiBridge:
         }
 
     def save_active_draft(self, state: dict[str, Any]) -> dict[str, Any]:
+        existing = drafts.load_draft(DRAFT_ACTIVE_ID)
+        # Autosave Studio mengirim payload parsial (fields/sources tanpa
+        # "sections"/"done"). Saat berkas draf belum ada (mis. baru saja
+        # "Mulai Lembar Kerja Kosong Baru"), `existing` adalah None — cabang
+        # penggabungan tidak boleh mengaksesnya (bug AttributeError yang
+        # membuat autosave gagal berulang kali pada draf kosong).
+        incoming_sections = state.get("sections")
+        if incoming_sections is None or (len(incoming_sections) == 0 and existing and existing.sections and not state.get("clear_sections")):
+            sections_to_save = list(existing.sections) if existing else []
+        else:
+            sections_to_save = incoming_sections or []
+
+        incoming_done = state.get("done")
+        if incoming_done is None or (len(incoming_done) == 0 and existing and existing.done and not state.get("clear_sections")):
+            done_to_save = list(existing.done) if existing else []
+        else:
+            done_to_save = list(incoming_done)
+
+        # Tab Review menyimpan tanpa "fields"; gabung per-kunci agar JUDUL/DOSEN
+        # yang sudah ada tidak hilang karena payload parsial.
+        incoming_fields = state.get("fields")
+        fields_to_save = dict(existing.fields) if existing and existing.fields else {}
+        if isinstance(incoming_fields, dict):
+            fields_to_save.update(incoming_fields)
+
+        # Tab Review tidak mengelola sumber (payload tanpa "fields"); daftar
+        # sumber kosong dari penyimpan semacam itu tidak boleh menghapus yang ada.
+        incoming_sources = state.get("sources")
+        if incoming_sources is None or ("fields" not in state and not incoming_sources):
+            sources_to_save = list(existing.sources) if existing else []
+        else:
+            sources_to_save = list(incoming_sources)
+
         draft_state = drafts.DraftState(
             draft_id=DRAFT_ACTIVE_ID,
-            fields=state.get("fields", {}),
-            sources=state.get("sources", []),
-            sections=state.get("sections", []),
-            done=list(state.get("done", [])),
+            fields=fields_to_save,
+            sources=sources_to_save,
+            sections=sections_to_save,
+            done=done_to_save,
         )
         drafts.save_draft(draft_state)
         return {"success": True}
 
+    def _archive_reviewed_draft(self, existing: drafts.DraftState | None) -> None:
+        """Arsipkan draf aktif yang punya kemajuan review sebelum ditimpa generasi.
+
+        Generasi (utuh maupun hasil batal) menyimpan `done=[]`; tanpa arsip,
+        status review yang sudah ditandai mahasiswa hilang diam-diam (F1).
+        Hanya draf yang benar-benar punya kemajuan review (tanda selesai atau
+        suntingan kalimat) yang diarsipkan — draf yang baru digenerate tanpa
+        disentuh tidak menumpuk arsip `arsip_pregen_` tiap regenerate.
+        """
+        if not existing:
+            return
+        has_review_progress = bool(existing.done) or any(
+            p.get("sentences") and any(s.get("origin") == "edit" for s in p["sentences"])
+            for sec in existing.sections
+            for p in sec.get("paragraphs", [])
+        )
+        if not has_review_progress:
+            return
+        judul = report.sanitize_filename(existing.fields.get("JUDUL") or "draf", max_len=30)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        archive = drafts.DraftState(
+            draft_id=f"arsip_pregen_{stamp}_{judul or 'draf'}",
+            fields=existing.fields,
+            sources=existing.sources,
+            sections=existing.sections,
+            done=existing.done,
+        )
+        try:
+            drafts.save_draft(archive)
+        except Exception:
+            log.exception("Gagal mengarsipkan draf sebelum digenerasi ulang")
+
     def clear_active_draft(self) -> dict[str, Any]:
+        # Arsipkan draf aktif yang masih berisi sebelum dihapus, agar aliran
+        # "Mulai Lembar Kerja Kosong Baru" tidak memusnahkan pekerjaan lama.
+        existing = drafts.load_draft(DRAFT_ACTIVE_ID)
+        if existing:
+            sentence_count = sum(
+                len(p.get("sentences", [])) for sec in existing.sections for p in sec.get("paragraphs", [])
+            )
+            if sentence_count > 0 or existing.sources or (existing.fields.get("JUDUL") or "").strip():
+                judul = report.sanitize_filename(existing.fields.get("JUDUL") or "draf", max_len=30)
+                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                archive = drafts.DraftState(
+                    draft_id=f"arsip_{stamp}_{judul or 'draf'}",
+                    fields=existing.fields,
+                    sources=existing.sources,
+                    sections=existing.sections,
+                    done=existing.done,
+                )
+                drafts.save_draft(archive)
         drafts.delete_draft(DRAFT_ACTIVE_ID)
         return {"success": True}
 
@@ -864,18 +1009,23 @@ class ApiBridge:
         return results
 
     def save_named_draft(self, name: str, state: dict[str, Any]) -> dict[str, Any]:
-        slug = report.sanitize_filename(name, max_len=40)
-        if not slug or slug == "laporan":
-            slug = f"laporan_{report.sanitize_filename(state.get('fields', {}).get('JUDUL', 'proyek'), max_len=20)}"
-        draft_state = drafts.DraftState(
-            draft_id=slug,
-            fields=state.get("fields", {}),
-            sources=state.get("sources", []),
-            sections=state.get("sections", []),
-            done=list(state.get("done", [])),
-        )
-        drafts.save_draft(draft_state)
-        return {"success": True, "draft_id": slug}
+        try:
+            if not isinstance(state, dict):
+                return {"success": False, "error": "Data state draf harus berupa objek."}
+            slug = report.sanitize_filename(name, max_len=40)
+            if not slug or slug == "laporan":
+                slug = f"laporan_{report.sanitize_filename(state.get('fields', {}).get('JUDUL', 'proyek'), max_len=20)}"
+            draft_state = drafts.DraftState(
+                draft_id=slug,
+                fields=state.get("fields", {}),
+                sources=state.get("sources", []),
+                sections=state.get("sections", []),
+                done=list(state.get("done", [])),
+            )
+            drafts.save_draft(draft_state)
+            return {"success": True, "draft_id": slug}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def load_named_draft(self, draft_id: str) -> dict[str, Any]:
         st = drafts.load_draft(draft_id)
@@ -920,10 +1070,20 @@ class ApiBridge:
 
         if not topic:
             return {"error": "Judul belum diisi."}
-        if not outline:
-            return {"error": "Outline masih kosong."}
         if not sources_data:
             return {"error": "Masukkan minimal satu sumber referensi."}
+
+        variant = format_spec.get_variant(variant_code)
+        if not outline:
+            if variant:
+                outline = format_spec.outline_titles(variant)
+            else:
+                outline = [
+                    "BAB 1. PENDAHULUAN",
+                    "BAB 2. TINJAUAN PUSTAKA",
+                    "BAB 3. HASIL DAN PEMBAHASAN",
+                    "BAB 4. KESIMPULAN DAN SARAN",
+                ]
 
         self._cancel_gen_event.clear()
 
@@ -977,6 +1137,19 @@ class ApiBridge:
                     }
                     for st in statuses
                 ]
+                active_draft = drafts.load_draft(DRAFT_ACTIVE_ID)
+                draft_fields = dict(active_draft.fields) if active_draft and active_draft.fields else {}
+                draft_fields["JUDUL"] = topic
+                draft_fields["VARIANT"] = variant_code
+                draft_fields["OUTLINE"] = outline
+                self._archive_reviewed_draft(active_draft)
+                drafts.save_draft(drafts.DraftState(
+                    draft_id=DRAFT_ACTIVE_ID,
+                    fields=draft_fields,
+                    sources=sources_data,
+                    sections=serialized,
+                    done=[],
+                ))
                 self._emit("gen_complete", {
                     "cancelled": False,
                     "sections": serialized,
@@ -1000,6 +1173,13 @@ class ApiBridge:
 
     def verify_document(self, sections_dicts: list[dict], sources_data: list[dict]) -> list[dict]:
         sections = report.sections_from_dicts(sections_dicts)
+        if not sources_data:
+            # Tanpa sumber, semua kalimat faktual otomatis gagal verifikasi.
+            # Jatuhkan ke sumber tersimpan pada draf aktif agar status tetap
+            # konsisten dengan yang terlihat saat streaming.
+            draft = drafts.load_draft(DRAFT_ACTIVE_ID)
+            if draft and draft.sources:
+                sources_data = draft.sources
         texts = [s.get("text", "") for s in sources_data]
         statuses = verify_sections(sections, texts)
         return [
@@ -1078,6 +1258,75 @@ class ApiBridge:
             "cited_ids": list(cited),
         }
 
+
+    def get_document_analytics(
+        self, sections_dicts: list[dict], sources_data: list[dict]
+    ) -> dict[str, Any]:
+        """Hitung metrik kualitas dokumen dan analitik mendalam standar akademik SaaS."""
+        sections = report.sections_from_dicts(sections_dicts)
+        total_words = 0
+        total_chars = 0
+        total_sentences = 0
+        total_paragraphs = 0
+        factual_sentences = 0
+        cited_factual_sentences = 0
+        section_distribution = []
+
+        for sec in sections:
+            sec_words = 0
+            for p in sec.paragraphs:
+                total_paragraphs += 1
+                for s in p.sentences:
+                    total_sentences += 1
+                    words = s.text.split()
+                    w_count = len(words)
+                    total_words += w_count
+                    total_chars += len(s.text)
+                    sec_words += w_count
+                    if s.is_factual:
+                        factual_sentences += 1
+                        if s.citation and s.source_ids:
+                            cited_factual_sentences += 1
+            section_distribution.append({
+                "title": sec.title,
+                "words": sec_words,
+            })
+
+        reading_time_minutes = max(1, round(total_words / 200)) if total_words > 0 else 0
+        coverage_pct = round((cited_factual_sentences / max(1, factual_sentences)) * 100) if factual_sentences > 0 else 100
+
+        # Skor Kematangan Akademik (0-100)
+        structure_score = min(30, len(sections) * 7.5)
+        length_score = min(30, (total_words / 1500) * 30)
+        citation_score = (coverage_pct / 100) * 40
+        academic_score = min(100, round(structure_score + length_score + citation_score))
+
+        # Skor Keterbacaan (Indonesian Reading Ease Adaptation)
+        avg_sentence_len = (total_words / max(1, total_sentences))
+        readability = max(10, min(100, round(100 - (avg_sentence_len * 1.8))))
+
+        return {
+            "total_words": total_words,
+            "total_chars": total_chars,
+            "total_sentences": total_sentences,
+            "total_paragraphs": total_paragraphs,
+            "reading_time_minutes": reading_time_minutes,
+            "citation_coverage_pct": coverage_pct,
+            "academic_score": academic_score,
+            "readability_score": readability,
+            "section_distribution": section_distribution,
+        }
+
+    def open_output_folder(self) -> dict[str, Any]:
+        """Buka folder keluaran dokumen DOCX di Windows Explorer."""
+        try:
+            paths.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(str(paths.OUTPUT_DIR.resolve()))
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": f"Gagal membuka folder output: {e}"}
+
     # =========================================================================
     # PREFLIGHT & EXPORT
     # =========================================================================
@@ -1107,6 +1356,7 @@ class ApiBridge:
             logo_path=logo_path,
             style=style,
             done=done_set,
+            sections=sections,
         )
         issues = preflight.find_issues(
             judul=judul,
@@ -1116,6 +1366,7 @@ class ApiBridge:
             logo_path=logo_path,
             style=style,
             done=done_set,
+            sections=sections,
         )
 
         return {
@@ -1143,6 +1394,9 @@ class ApiBridge:
 
         tpls = self.db.list_template()
         tpl = next((t for t in tpls if t.id == tpl_id_int), None)
+        # Fallback toleran jika id template out-of-sync tetapi ada template valid di database
+        if not tpl and tpls:
+            tpl = next((t for t in tpls if Path(t.path).is_file()), None)
         if not tpl or not Path(tpl.path).is_file():
             return {"error": "Template DOCX tidak ditemukan."}
 
@@ -1160,6 +1414,25 @@ class ApiBridge:
                 normalized_fields.setdefault(f"{{{{{k}}}}}", v)
             elif k.startswith("{{") and k.endswith("}}"):
                 normalized_fields.setdefault(k[2:-2].strip(), v)
+
+        # Penanda sampul wajib punya rantai cadangan: draf -> profil SQLite ->
+        # nilai terhitung, sehingga penanda tidak pernah tercetak mentah.
+        profil = self.db.get_profil()
+        fallbacks = {
+            "NAMA": profil.nama,
+            "NIM": profil.nim,
+            "PRODI": profil.prodi,
+            "FAKULTAS": profil.fakultas,
+            "INSTITUSI": profil.institusi,
+            "TANGGAL": report.format_tanggal(),
+            "TAHUN": str(datetime.now().year),
+        }
+        for key, value in fallbacks.items():
+            if not str(normalized_fields.get(key, "") or "").strip() and value:
+                # isi dua bentuk kunci (dengan dan tanpa kurung kurawal) agar
+                # renderer yang membaca salah satu bentuk tetap menemukannya
+                normalized_fields[key] = value
+                normalized_fields.setdefault(f"{{{{{key}}}}}", value)
 
         judul = normalized_fields.get("JUDUL", "Laporan")
         filename = report.sanitize_filename(judul)
@@ -1182,6 +1455,19 @@ class ApiBridge:
                 update_fields=True,
                 label_forms=label_forms,
             )
+            leftover = _leftover_placeholders(final_path)
+            if leftover:
+                try:
+                    final_path.unlink()
+                except OSError:
+                    pass
+                return {
+                    "error": (
+                        "Ekspor dibatalkan: penanda yang tidak terganti masih ada "
+                        f"di dokumen ({', '.join(leftover)}). Lengkapi data yang "
+                        "bersangkutan lalu ekspor lagi."
+                    )
+                }
             # Simpan draf (jangan dihapus agar dapat dibuka & direvisi kembali)
             # drafts.delete_draft(DRAFT_ACTIVE_ID)
 

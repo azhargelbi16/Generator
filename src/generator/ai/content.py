@@ -74,18 +74,63 @@ def _pairs_combine_duplicates(pairs):
     return res
 
 
+def repair_truncated_json(raw: str) -> dict | None:
+    """Pulihkan JSON yang terpotong di tengah jalan (misal karena batas token / finish_reason=length)."""
+    if not isinstance(raw, str):
+        return None
+    start = raw.find("{")
+    if start == -1:
+        return None
+    raw_sub = raw[start:]
+
+    max_search = min(len(raw_sub), 4000)
+    best_candidate: dict | None = None
+    best_sentences = -1
+
+    for i in range(len(raw_sub), max(0, len(raw_sub) - max_search), -1):
+        candidate = raw_sub[:i]
+        open_curly = candidate.count("{") - candidate.count("}")
+        open_square = candidate.count("[") - candidate.count("]")
+        if open_curly < 0 or open_square < 0:
+            continue
+        test_str = candidate
+        if test_str.count('"') % 2 != 0:
+            test_str += '"'
+        test_str += "]" * open_square + "}" * open_curly
+        try:
+            d = json.loads(test_str, object_pairs_hook=_pairs_combine_duplicates)
+            if isinstance(d, dict):
+                s_count = 0
+                for sec in d.get("sections", []):
+                    if isinstance(sec, dict):
+                        for p in sec.get("paragraphs", []):
+                            if isinstance(p, dict):
+                                s_count += len(p.get("sentences", []))
+                if s_count > best_sentences:
+                    best_sentences = s_count
+                    best_candidate = d
+                    if s_count > 0:
+                        return best_candidate
+                elif best_candidate is None and ("sections" in d or "paragraphs" in d or "sentences" in d):
+                    best_candidate = d
+        except Exception:
+            continue
+    return best_candidate
+
+
 def _first_json_object(reply) -> dict | None:
     if not isinstance(reply, str):
         return None
     start = reply.find("{")
     end = reply.rfind("}")
-    if start == -1 or end <= start:
-        return None
-    try:
-        data = json.loads(reply[start : end + 1], object_pairs_hook=_pairs_combine_duplicates)
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
+    if start != -1 and end > start:
+        try:
+            data = json.loads(reply[start : end + 1], object_pairs_hook=_pairs_combine_duplicates)
+            if isinstance(data, dict):
+                return data
+        except ValueError:
+            pass
+    return repair_truncated_json(reply)
 
 
 def _to_int(value, default: int) -> int:
@@ -194,15 +239,14 @@ def _token_similarity(text_a: str, text_b: str) -> float:
 def _merge_sections(existing: list[Section], incoming: list[Section]) -> None:
     """Gabung bab per judul dan buang kalimat duplikat/parafrase (kemiripan token >= 0.85).
 
-    Jangan buang kalimat bila sitasinya berbeda.
+    Jangan buang kalimat bila sitasinya berbeda. Deduplikasi hanya di dalam bab
+    yang sama: fakta sumber yang sama memang ditulis ulang antarbab (latar
+    belakang vs hasil), dan membuangnya melingkar mengosongkan bab.
     """
     by_title = {_normalize(section.title): section for section in existing}
-    all_sentences: list[Sentence] = [
-        sentence
-        for section in existing
-        for paragraph in section.paragraphs
-        for sentence in paragraph.sentences
-    ]
+
+    def _section_sentences(section: Section) -> list[Sentence]:
+        return [sentence for paragraph in section.paragraphs for sentence in paragraph.sentences]
 
     for section in incoming:
         key = _normalize(section.title)
@@ -211,11 +255,12 @@ def _merge_sections(existing: list[Section], incoming: list[Section]) -> None:
             target = Section(section.level, section.title, [])
             existing.append(target)
             by_title[key] = target
+        section_sentences = _section_sentences(target)
         for paragraph in section.paragraphs:
             fresh = []
             for sentence in paragraph.sentences:
                 is_duplicate = False
-                for ex in all_sentences:
+                for ex in section_sentences:
                     sim = _token_similarity(sentence.text, ex.text)
                     if sim >= 0.85:
                         if set(sentence.source_ids) == set(ex.source_ids):
@@ -223,7 +268,7 @@ def _merge_sections(existing: list[Section], incoming: list[Section]) -> None:
                             break
                 if is_duplicate:
                     continue
-                all_sentences.append(sentence)
+                section_sentences.append(sentence)
                 fresh.append(sentence)
             if fresh:
                 target.paragraphs.append(Paragraph(fresh))
@@ -296,7 +341,17 @@ def _stream_batch(client, messages, progress, source_texts_by_id, cancel, emitte
     buffer = ""
     collected: list[tuple[str, Sentence]] = []
     try:
-        for chunk in client.chat_stream(messages, json_mode=True, cancel=cancel):
+        stream_kwargs = {"json_mode": True, "cancel": cancel}
+        try:
+            import inspect
+            sig = inspect.signature(client.chat_stream)
+            if "max_tokens" in sig.parameters:
+                stream_kwargs["max_tokens"] = 8192
+            if "stream_read_timeout" in sig.parameters:
+                stream_kwargs["stream_read_timeout"] = 45.0
+        except Exception:
+            pass
+        for chunk in client.chat_stream(messages, **stream_kwargs):
             if cancel is not None and cancel.is_set():
                 break
             if not chunk:
@@ -315,8 +370,9 @@ def _stream_batch(client, messages, progress, source_texts_by_id, cancel, emitte
                 progress.sentence_born(sentence, _status_of(sentence, source_texts_by_id))
                 collected.append((_current_title(buffer), sentence))
     except StreamError:
-        return None, collected
-    return _first_json_object(buffer), collected
+        pass
+    data = _first_json_object(buffer) or repair_truncated_json(buffer)
+    return data, collected
 
 
 def _reveal_sentences(data: dict, progress, source_texts_by_id, emitted) -> None:
@@ -491,51 +547,132 @@ def generate_sections(
     total = 0
     gagal = 0
     cancelled = False
-    for number, batch in enumerate(batches, start=1):
-        if cancel is not None and cancel.is_set():
-            cancelled = True
-            break
-        total += 1
-        if progress is not None:
-            progress.batch_started(number, total_b)
-        target_outline = select_relevant_outline(outline, batch)
-        # Jika select_relevant_outline mengembalikan semua bab dan ada lebih dari 1 batch,
-        # bagi outline agar tiap batch fokus dan tidak melebihi batas token output (finish_reason=length)
-        if len(target_outline) == len(outline) and len(outline) > 2 and total_b > 1:
-            mid = (len(outline) + 1) // 2
-            if number <= total_b // 2:
-                target_outline = outline[:mid]
-            else:
-                target_outline = outline[mid - 1 :]
-        messages = prompts.content_prompt(
-            topic, target_outline, sources, batch,
-            variant=variant_spec.code if variant_spec is not None else None,
-        )
-        data = None
-        collected: list[tuple[str, Sentence]] = []
-        use_stream = progress is not None and hasattr(client, "chat_stream")
-        if use_stream:
-            data, collected = _stream_batch(
-                client, messages, progress, source_texts_by_id, cancel, emitted
+    # Arsitektur Pipeline Cerdas SaaS $1B:
+    # Bila memakai varian format resmi (A/B/C),
+    # jalankan per bab lengkap dengan subbabnya agar setiap bagian terisi mendalam,
+    # tidak ada subbab kosong, dan seluruh sumber (2022-2026) dapat disintesis secara komparatif.
+    if variant_spec is not None and hasattr(format_spec, "chapter_sub_outlines") and len(outline) > 1:
+        chapter_plans = format_spec.chapter_sub_outlines(variant_spec)
+        total_steps = len(chapter_plans)
+        # Seluruh sumber dimasukkan ke referensi bab agar komparasi antar paper berjalan optimal
+        ref_chunks = chunk_refs if len(chunk_refs) <= 30 else batches[0]
+        for number, (chap_title, sub_outlines) in enumerate(chapter_plans, start=1):
+            if cancel is not None and cancel.is_set():
+                cancelled = True
+                break
+            total += 1
+            if progress is not None:
+                progress.batch_started(number, total_steps)
+            messages = prompts.content_prompt(
+                topic, sub_outlines, sources, ref_chunks,
+                variant=variant_spec.code if variant_spec is not None else None,
             )
-        if cancel is not None and cancel.is_set():
-            cancelled = True
-            if collected:
+            data = None
+            collected: list[tuple[str, Sentence]] = []
+            use_stream = progress is not None and hasattr(client, "chat_stream")
+            if use_stream:
+                data, collected = _stream_batch(
+                    client, messages, progress, source_texts_by_id, cancel, emitted
+                )
+            if cancel is not None and cancel.is_set():
+                cancelled = True
+                if collected:
+                    _merge_sections(sections, _partial_sections(collected))
+                break
+            if not use_stream or data is None:
+                try:
+                    import inspect
+                    chat_kwargs = {"json_mode": True}
+                    try:
+                        sig = inspect.signature(client.chat)
+                        if "max_tokens" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                            chat_kwargs["max_tokens"] = 8192
+                        if "timeout" in sig.parameters:
+                            chat_kwargs["timeout"] = 240.0
+                    except Exception:
+                        pass
+                    reply = client.chat(messages, **chat_kwargs)
+                    data = _first_json_object(reply) or repair_truncated_json(reply)
+                    if data is not None and progress is not None:
+                        _reveal_sentences(data, progress, source_texts_by_id, emitted)
+                except AIError as exc:
+                    _logger.warning("Bab %d (%s) gagal diproses AI: %s", number, chap_title, exc)
+                    partial = getattr(exc, "partial_content", None)
+                    if partial:
+                        data = _first_json_object(partial) or repair_truncated_json(partial)
+                        if data is not None and progress is not None:
+                            _reveal_sentences(data, progress, source_texts_by_id, emitted)
+                    else:
+                        data = None
+            if data is not None:
+                _merge_sections(sections, _sections_from_dict(data))
+            elif collected:
+                _logger.info("Bab %d: Menggunakan %d kalimat yang dialirkan sebelum batas respon.", number, len(collected))
                 _merge_sections(sections, _partial_sections(collected))
-            break
-        if not use_stream or data is None:
-            try:
-                reply = client.chat(messages, json_mode=True)
-                data = _first_json_object(reply)
-                if data is not None and progress is not None:
-                    _reveal_sentences(data, progress, source_texts_by_id, emitted)
-            except AIError as exc:
-                _logger.warning("Batch %d gagal diproses oleh AI: %s", number, exc)
-                data = None
-        if data is None:
-            gagal += 1
-            continue
-        _merge_sections(sections, _sections_from_dict(data))
+            else:
+                gagal += 1
+    else:
+        for number, batch in enumerate(batches, start=1):
+            if cancel is not None and cancel.is_set():
+                cancelled = True
+                break
+            total += 1
+            if progress is not None:
+                progress.batch_started(number, total_b)
+            target_outline = select_relevant_outline(outline, batch)
+            if len(target_outline) == len(outline) and len(outline) > 2 and total_b > 1:
+                mid = (len(outline) + 1) // 2
+                if number <= total_b // 2:
+                    target_outline = outline[:mid]
+                else:
+                    target_outline = outline[mid - 1 :]
+            messages = prompts.content_prompt(
+                topic, target_outline, sources, batch,
+                variant=variant_spec.code if variant_spec is not None else None,
+            )
+            data = None
+            collected: list[tuple[str, Sentence]] = []
+            use_stream = progress is not None and hasattr(client, "chat_stream")
+            if use_stream:
+                data, collected = _stream_batch(
+                    client, messages, progress, source_texts_by_id, cancel, emitted
+                )
+            if cancel is not None and cancel.is_set():
+                cancelled = True
+                if collected:
+                    _merge_sections(sections, _partial_sections(collected))
+                break
+            if not use_stream or data is None:
+                try:
+                    import inspect
+                    chat_kwargs = {"json_mode": True}
+                    try:
+                        sig = inspect.signature(client.chat)
+                        if "max_tokens" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                            chat_kwargs["max_tokens"] = 16384
+                    except Exception:
+                        pass
+                    reply = client.chat(messages, **chat_kwargs)
+                    data = _first_json_object(reply)
+                    if data is not None and progress is not None:
+                        _reveal_sentences(data, progress, source_texts_by_id, emitted)
+                except AIError as exc:
+                    _logger.warning("Batch %d gagal diproses oleh AI: %s", number, exc)
+                    partial = getattr(exc, "partial_content", None)
+                    if partial:
+                        data = _first_json_object(partial)
+                        if data is not None and progress is not None:
+                            _reveal_sentences(data, progress, source_texts_by_id, emitted)
+                    else:
+                        data = None
+            if data is None:
+                if collected:
+                    _logger.info("Batch %d: Menggunakan %d kalimat yang berhasil dialirkan sebelum batas respon.", number, len(collected))
+                    _merge_sections(sections, _partial_sections(collected))
+                    continue
+                gagal += 1
+                continue
+            _merge_sections(sections, _sections_from_dict(data))
     if progress is not None:
         progress.finished(cancelled)
     if cancelled:

@@ -18,6 +18,7 @@ from ctypes import wintypes
 import json
 import logging
 import re
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,12 @@ from . import paths
 from .atomic import write_text as write_text_atomic
 
 log = logging.getLogger("generator.drafts")
+
+# Autosave UI bisa beriringan dengan penyimpanan dari thread generasi;
+# di Windows, os.replace pada berkas yang sedang dibaca thread lain bisa
+# melempar PermissionError sesaat. Satu kunci global menjaga baca-tulis
+# draf menjadi atomik antar-thread.
+_IO_LOCK = threading.Lock()
 
 _DRAFT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _RESERVED_NAMES = (
@@ -119,28 +126,34 @@ def _path(draft_id: str) -> Path:
 
 
 def save_draft(state: DraftState) -> Path:
-    paths.ensure_dirs()
-    path = _path(state.draft_id)
-    raw_json = json.dumps(asdict(state), ensure_ascii=False, indent=2)
-    raw_bytes = raw_json.encode("utf-8")
+    with _IO_LOCK:
+        paths.ensure_dirs()
+        path = _path(state.draft_id)
+        raw_json = json.dumps(asdict(state), ensure_ascii=False, indent=2)
+        raw_bytes = raw_json.encode("utf-8")
 
-    encrypted_blob = _dpapi_protect(raw_bytes)
-    if encrypted_blob is not None:
-        envelope = {
-            "version": 2,
-            "encrypted": True,
-            "payload": base64.b64encode(encrypted_blob).decode("ascii"),
-        }
-        write_text_atomic(path, json.dumps(envelope, indent=2))
-    else:
-        # Fallback polos hanya bila DPAPI tidak tersedia, catat di log tanpa isi data
-        log.warning("DPAPI tidak tersedia; menyimpan draf dalam format polos.")
-        write_text_atomic(path, raw_json)
-    return path
+        encrypted_blob = _dpapi_protect(raw_bytes)
+        if encrypted_blob is not None:
+            envelope = {
+                "version": 2,
+                "encrypted": True,
+                "payload": base64.b64encode(encrypted_blob).decode("ascii"),
+            }
+            write_text_atomic(path, json.dumps(envelope, indent=2))
+        else:
+            # Fallback polos hanya bila DPAPI tidak tersedia, catat di log tanpa isi data
+            log.warning("DPAPI tidak tersedia; menyimpan draf dalam format polos.")
+            write_text_atomic(path, raw_json)
+        return path
 
 
 def load_draft(draft_id: str) -> DraftState | None:
     """Baca draf; kembalikan None bila tidak ada atau rusak."""
+    with _IO_LOCK:
+        return _load_draft_unlocked(draft_id)
+
+
+def _load_draft_unlocked(draft_id: str) -> DraftState | None:
     path = _path(draft_id)
     if not path.is_file():
         return None

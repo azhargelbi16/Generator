@@ -36,9 +36,10 @@ import { toast } from '../lib/toast';
 interface TabLaporanProps {
   onGenerateComplete: () => void;
   onGeneratingChange?: (generating: boolean) => void;
+  isActive?: boolean;
 }
 
-export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGeneratingChange }) => {
+export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGeneratingChange, isActive = false }) => {
   const streamEndRef = React.useRef<HTMLDivElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -101,8 +102,24 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     const handleSentenceBorn = (e: any) => {
       setRecentSentences((prev) => [...prev, e.detail]);
     };
-    const handleGenComplete = () => {
+    const handleGenComplete = (e: any) => {
       setIsGenerating(false);
+      if (e?.detail?.sections) {
+        api.saveActiveDraft({
+          fields: {
+            JUDUL: topic,
+            DOSEN: selectedDosen,
+            MATA_KULIAH: selectedMatkul,
+            LOGO_PATH: selectedLogoPath,
+            TEMPLATE_ID: selectedTemplateId,
+            VARIANT: selectedVariant,
+            OUTLINE: outline,
+          },
+          sources,
+          sections: e.detail.sections,
+          done: [],
+        });
+      }
       onGenerateComplete();
     };
     const handleGenError = (e: any) => {
@@ -122,6 +139,38 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       window.removeEventListener('gen_error', handleGenError);
     };
   }, []);
+
+  // Reload dropdowns and template data whenever tab becomes active
+  useEffect(() => {
+    if (isActive && !isGenerating) {
+      loadInitialData();
+    }
+  }, [isActive]);
+
+  // Auto-save form inputs to active draft after 1000ms idle
+  useEffect(() => {
+    if (isGenerating) return;
+    if (!topic && sources.length === 0 && outline.length === 0) return;
+
+    const timer = setTimeout(() => {
+      api.saveActiveDraft({
+        fields: {
+          JUDUL: topic,
+          DOSEN: selectedDosen,
+          MATA_KULIAH: selectedMatkul,
+          LOGO_PATH: selectedLogoPath,
+          TEMPLATE_ID: selectedTemplateId,
+          VARIANT: selectedVariant,
+          OUTLINE: outline,
+        },
+        sources,
+        sections: [],
+        done: [],
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [topic, sources, selectedDosen, selectedMatkul, selectedLogoPath, selectedTemplateId, selectedVariant, outline, isGenerating]);
 
   // Smooth auto-scroll saat kalimat baru tiba
   useEffect(() => {
@@ -152,8 +201,15 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       if (l) setLogoList(l);
       if (t) {
         setTemplates(t);
-        const valid = t.find((x) => x.status === 'lengkap');
-        if (valid) setSelectedTemplateId(valid.id);
+        setSelectedTemplateId((prev) => {
+          if (prev && t.some((item) => item.id === prev)) {
+            return prev;
+          }
+          const defaultItem = t.find((x) => x.is_default && x.status === 'lengkap');
+          if (defaultItem) return defaultItem.id;
+          const valid = t.find((x) => x.status === 'lengkap');
+          return valid ? valid.id : (t[0] ? t[0].id : null);
+        });
       }
       if (v) setVariants(v);
 
@@ -164,7 +220,19 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         if (draft.fields?.MATA_KULIAH) setSelectedMatkul(draft.fields.MATA_KULIAH);
         if (draft.fields?.LOGO_PATH) setSelectedLogoPath(draft.fields.LOGO_PATH);
         if (draft.fields?.TEMPLATE_ID) setSelectedTemplateId(Number(draft.fields.TEMPLATE_ID));
-      } else if (v) {
+        if (draft.fields?.VARIANT) setSelectedVariant(draft.fields.VARIANT);
+
+        if (draft.fields?.OUTLINE && Array.isArray(draft.fields.OUTLINE) && draft.fields.OUTLINE.length > 0) {
+          setOutline(draft.fields.OUTLINE);
+        } else if (draft.sections && draft.sections.length > 0) {
+          setOutline(draft.sections.map((s) => s.title));
+        } else if (v) {
+          const matchedV = v.find((x) => x.code === (draft.fields?.VARIANT || 'b'));
+          if (matchedV && matchedV.outline_titles.length > 0) {
+            setOutline(matchedV.outline_titles);
+          }
+        }
+      } else if (v && outline.length === 0) {
         // default variant outline
         const varB = v.find((x) => x.code === 'b');
         if (varB) setOutline(varB.outline_titles);
@@ -303,6 +371,8 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         MATA_KULIAH: selectedMatkul,
         LOGO_PATH: selectedLogoPath,
         TEMPLATE_ID: selectedTemplateId,
+        VARIANT: selectedVariant,
+        OUTLINE: outline,
       },
       sources,
       sections: [],
@@ -329,6 +399,12 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       if (d.fields?.MATA_KULIAH) setSelectedMatkul(d.fields.MATA_KULIAH);
       if (d.fields?.LOGO_PATH) setSelectedLogoPath(d.fields.LOGO_PATH);
       if (d.fields?.TEMPLATE_ID) setSelectedTemplateId(Number(d.fields.TEMPLATE_ID));
+      if (d.fields?.VARIANT) setSelectedVariant(d.fields.VARIANT);
+      if (d.fields?.OUTLINE && Array.isArray(d.fields.OUTLINE) && d.fields.OUTLINE.length > 0) {
+        setOutline(d.fields.OUTLINE);
+      } else if (d.sections && d.sections.length > 0) {
+        setOutline(d.sections.map((s: any) => s.title));
+      }
       setProjectModalOpen(false);
       toast.success(`Proyek '${d.fields?.JUDUL || draftId}' berhasil dimuat.`);
     } else {
@@ -392,6 +468,21 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       toast.error('Outline masih kosong.');
       return;
     }
+
+    await api.saveActiveDraft({
+      fields: {
+        JUDUL: topic,
+        DOSEN: selectedDosen,
+        MATA_KULIAH: selectedMatkul,
+        LOGO_PATH: selectedLogoPath,
+        TEMPLATE_ID: selectedTemplateId,
+        VARIANT: selectedVariant,
+        OUTLINE: outline,
+      },
+      sources,
+      sections: [],
+      done: [],
+    });
 
     setIsGenerating(true);
     setRecentSentences([]);
@@ -800,21 +891,27 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                   </select>
 
                   {/* Selected Template Academic Spec Bar */}
-                  {selectedTemplateId && (
-                    <div className="mt-2 p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]">
-                          A4 (4-4-3-3 cm)
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]">
-                          Times New Roman 12pt
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold text-[10px]">
-                          APA 7 Ready
-                        </span>
+                  {selectedTemplateId && (() => {
+                    const selT = templates.find((t) => t.id === selectedTemplateId);
+                    return (
+                      <div className="mt-2 p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]">
+                            {selT?.spec?.paper || 'A4'} ({selT?.spec?.margin || '4-4-3-3 cm'})
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]">
+                            {selT?.spec?.font || 'Times New Roman 12pt'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]">
+                            Spasi {selT?.spec?.spacing || '1.5'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold text-[10px]">
+                            APA 7 Ready
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -828,7 +925,10 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                   >
                     {variants.map((v) => (
                       <option key={v.code} value={v.code}>
-                        Varian {v.code.toUpperCase()}: {v.name}
+                        {v.code === 'b' ? '⭐ Varian B (Baku): Makalah Kuliah Standar Dikti (4 Bab)' :
+                         v.code === 'a' ? '📚 Varian A: Makalah Tinjauan / Komparatif (Multi-Topik)' :
+                         v.code === 'c' ? '🔬 Varian C: Laporan Praktikum Laboratorium' :
+                         '✨ Format Bebas: Outline Kustom'}
                       </option>
                     ))}
                   </select>

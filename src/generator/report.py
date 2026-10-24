@@ -107,6 +107,14 @@ def build_fields(
     prodi = _extract_str(profile, "prodi")
     if prodi:
         fields["{{PRODI}}"] = prodi
+    fakultas = _extract_str(profile, "fakultas")
+    if fakultas:
+        fields["{{FAKULTAS}}"] = fakultas
+    institusi = _extract_str(profile, "institusi")
+    if institusi:
+        fields["{{INSTITUSI}}"] = institusi
+        fields["{{UNIVERSITAS}}"] = institusi
+        fields["{{KAMPUS}}"] = institusi
     if year_str:
         fields["{{TAHUN}}"] = year_str
     return fields

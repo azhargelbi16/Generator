@@ -103,3 +103,20 @@ def test_retensi_maksimal_10_berkas_backup(tmp_path):
 
     remaining = list(backup_dir.glob("app-*.db"))
     assert len(remaining) == 10
+
+
+def test_profil_fakultas_dan_institusi(tmp_path):
+    db = Database(tmp_path / "profil_v3.db")
+    db.init_schema()
+    db.set_profil(Profil(
+        nama="Azhar",
+        nim="21081010",
+        prodi="Informatika",
+        fakultas="Ilmu Komputer",
+        institusi="Universitas Jember"
+    ))
+    p = db.get_profil()
+    assert p.nama == "Azhar"
+    assert p.fakultas == "Ilmu Komputer"
+    assert p.institusi == "Universitas Jember"
+    assert db.schema_version() >= 3

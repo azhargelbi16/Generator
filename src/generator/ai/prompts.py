@@ -7,6 +7,7 @@ atau halaman web tidak bisa membajak instruksi model (11.6).
 from __future__ import annotations
 
 import json
+import re
 
 from .. import format_spec
 
@@ -66,11 +67,30 @@ def content_prompt(
     variant_spec = format_spec.get_variant(variant)
     if variant_spec is not None:
         system += "\n\n" + format_spec.format_block(variant_spec)
+    if any(re.match(r"^\d+\.\d+", t.strip()) for t in outline):
+        system += (
+            "\n\nPENTING UNTUK SUBBAB:\n"
+            "- Wajib buat section terpisah untuk SETIAP judul yang diminta pada outline secara berurutan.\n"
+            "- Untuk judul BAB utama (level 1) yang langsung memiliki subbab (seperti 1.1 Latar Belakang), kosongkan paragraphs pada BAB utama (paragraphs: []) dan letakkan seluruh isi teks langsung di dalam subbab terkait (level 2 atau 3) agar tidak ada pengulangan isi."
+        )
     source_lines = []
     for index, source in enumerate(sources):
         authors = ", ".join(author.family for author in source.authors) or "(tanpa penulis)"
         source_lines.append(f"[sumber {index}] {authors} ({source.year or 'n.d.'}). {source.title}.")
-    labeled_chunks = "\n\n".join(f"[sumber {source_id}]\n{text}" for source_id, text in chunk_refs)
+    # Sumber yang tidak membawa teks isi (mis. DOI tanpa abstrak CrossRef)
+    # diberi peringatan eksplisit agar AI tidak mengarang kutipan darinya.
+    labeled_parts = []
+    for source_id, text in chunk_refs:
+        body = text.strip()
+        if len(body) < 250:
+            labeled_parts.append(
+                f"[sumber {source_id}]\n{body}\n"
+                "(PERINGATAN: sumber ini hanya metadata tanpa teks isi yang bisa dikutip — "
+                "JANGAN menulis kalimat yang mengutip sumber ini.)"
+            )
+        else:
+            labeled_parts.append(f"[sumber {source_id}]\n{text}")
+    labeled_chunks = "\n\n".join(labeled_parts)
     user = (
         f"Tema laporan: {topic}\n"
         f"Judul bab yang wajib ditulis, berurutan: {', '.join(outline)}\n\n"

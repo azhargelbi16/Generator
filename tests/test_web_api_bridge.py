@@ -26,10 +26,12 @@ def test_api_bridge_config_and_profiles(tmp_path: Path):
     # Profile tests
     p = bridge.get_profile()
     assert p["nama"] == ""
-    bridge.save_profile({"nama": "Budi", "nim": "123", "prodi": "TI"})
+    bridge.save_profile({"nama": "Budi", "nim": "123", "prodi": "TI", "fakultas": "Fasilkom", "institusi": "UI"})
     p2 = bridge.get_profile()
     assert p2["nama"] == "Budi"
     assert p2["nim"] == "123"
+    assert p2["fakultas"] == "Fasilkom"
+    assert p2["institusi"] == "UI"
 
     # Dosen tests
     add_d = bridge.add_dosen({"nama": "Dr. Dosen", "gelar": "M.Kom", "identitas": "12345"})
@@ -345,6 +347,8 @@ def test_export_report_sukses_dan_os_startfile_dimock(tmp_path: Path, monkeypatc
             "NAMA": "Budi Santoso",
             "NIM": "2024001",
             "PRODI": "Teknologi Pertanian",
+            "DOSEN": "Dr. Ir. Pembimbing, M.P.",
+            "MATA_KULIAH": "Pertanian Organik",
         },
         "sources": [
             {
@@ -388,6 +392,8 @@ def test_export_report_sukses_dan_os_startfile_dimock(tmp_path: Path, monkeypatc
     doc_text = "\n".join(p.text for p in doc.paragraphs)
     assert "Laporan Kemajuan Pertanian Organik" in doc_text
     assert "Pertanian organik terus berkembang pesat di Indonesia" in doc_text
+    # Kontrak: penanda tidak pernah tercetak mentah pada hasil ekspor
+    assert "{{" not in doc_text
 
     # 6. Pastikan os.startfile di-mock dan dipanggil
     if os.name == "nt":

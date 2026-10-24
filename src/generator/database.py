@@ -11,7 +11,7 @@ from typing import Callable
 
 from . import paths
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _migration_1_to_2(conn: sqlite3.Connection) -> None:
@@ -20,8 +20,21 @@ def _migration_1_to_2(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_dosen_nama ON dosen(nama)")
 
 
+def _migration_2_to_3(conn: sqlite3.Connection) -> None:
+    """Migrasi 2 -> 3: Tambah kolom fakultas dan institusi pada profil_mahasiswa."""
+    try:
+        conn.execute("ALTER TABLE profil_mahasiswa ADD COLUMN fakultas TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE profil_mahasiswa ADD COLUMN institusi TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _migration_1_to_2,
+    3: _migration_2_to_3,
 }
 
 
@@ -74,7 +87,9 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS profil_mahasiswa (
     nama TEXT NOT NULL DEFAULT '',
     nim TEXT NOT NULL DEFAULT '',
-    prodi TEXT NOT NULL DEFAULT ''
+    prodi TEXT NOT NULL DEFAULT '',
+    fakultas TEXT NOT NULL DEFAULT '',
+    institusi TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS dosen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,6 +124,8 @@ class Profil:
     nama: str = ""
     nim: str = ""
     prodi: str = ""
+    fakultas: str = ""
+    institusi: str = ""
 
 
 @dataclass
@@ -221,20 +238,38 @@ class Database:
 
     # Profil mahasiswa (baris tunggal)
     def get_profil(self) -> Profil:
-        row = self.conn.execute(
-            "SELECT nama, nim, prodi FROM profil_mahasiswa LIMIT 1"
-        ).fetchone()
+        try:
+            row = self.conn.execute(
+                "SELECT nama, nim, prodi, fakultas, institusi FROM profil_mahasiswa LIMIT 1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            row = self.conn.execute(
+                "SELECT nama, nim, prodi FROM profil_mahasiswa LIMIT 1"
+            ).fetchone()
         if row is None:
             return Profil()
-        return Profil(row["nama"], row["nim"], row["prodi"])
+        keys = row.keys() if hasattr(row, "keys") else []
+        return Profil(
+            nama=row["nama"],
+            nim=row["nim"],
+            prodi=row["prodi"],
+            fakultas=row["fakultas"] if "fakultas" in keys else "",
+            institusi=row["institusi"] if "institusi" in keys else "",
+        )
 
     def set_profil(self, p: Profil) -> None:
         cur = self.conn.cursor()
         cur.execute("DELETE FROM profil_mahasiswa")
-        cur.execute(
-            "INSERT INTO profil_mahasiswa (nama, nim, prodi) VALUES (?, ?, ?)",
-            (p.nama, p.nim, p.prodi),
-        )
+        try:
+            cur.execute(
+                "INSERT INTO profil_mahasiswa (nama, nim, prodi, fakultas, institusi) VALUES (?, ?, ?, ?, ?)",
+                (p.nama, p.nim, p.prodi, p.fakultas, p.institusi),
+            )
+        except sqlite3.OperationalError:
+            cur.execute(
+                "INSERT INTO profil_mahasiswa (nama, nim, prodi) VALUES (?, ?, ?)",
+                (p.nama, p.nim, p.prodi),
+            )
         self.conn.commit()
 
     # Dosen

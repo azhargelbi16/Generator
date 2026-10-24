@@ -14,6 +14,9 @@ from ..config import Config
 TIMEOUT = 120
 STREAM_TIMEOUT = 300
 STREAM_READ_TIMEOUT = 5
+# Watchdog: stream yang hanya mengirim komentar/keepalive (tanpa konten) tidak
+# boleh menggantung selamanya — putuskan bila tidak ada delta konten selama ini.
+STREAM_STALL_TIMEOUT = 180.0
 PROBE_TIMEOUT = 8
 DEFAULT_MAX_TOKENS = 4096
 RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -83,6 +86,7 @@ class AIClient:
         messages: list[dict],
         json_mode: bool = False,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        timeout: float | None = None,
     ) -> str:
         url = f"{self.cfg.ai_base_url.rstrip('/')}/chat/completions"
         payload: dict[str, Any] = {
@@ -96,9 +100,10 @@ class AIClient:
         headers = _get_headers(self.cfg)
 
         data = None
+        req_timeout = timeout if timeout is not None else TIMEOUT
         for attempt in range(MAX_RETRIES + 1):
             try:
-                response = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+                response = requests.post(url, headers=headers, json=payload, timeout=req_timeout)
                 if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
                     backoff = RETRY_BACKOFFS[attempt]
                     retry_after = (
@@ -152,7 +157,11 @@ class AIClient:
         if not isinstance(first_choice, dict):
             raise AIError("Format pilihan respons AI tidak valid.")
         if first_choice.get("finish_reason") == "length":
-            raise AIError("Respons AI terpotong karena batas token (finish_reason=length).")
+            err = AIError("Respons AI terpotong karena batas token (finish_reason=length).")
+            msg_obj = first_choice.get("message")
+            if isinstance(msg_obj, dict):
+                err.partial_content = msg_obj.get("content") or msg_obj.get("reasoning_content")
+            raise err
         try:
             msg = first_choice["message"]
             content = msg.get("content")
@@ -168,6 +177,7 @@ class AIClient:
         json_mode: bool = False,
         cancel=None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        stream_read_timeout: float | None = None,
     ):
         url = f"{self.cfg.ai_base_url.rstrip('/')}/chat/completions"
         payload: dict[str, Any] = {
@@ -182,6 +192,8 @@ class AIClient:
         headers = _get_headers(self.cfg)
 
         response = None
+        read_timeout = stream_read_timeout if stream_read_timeout is not None else STREAM_READ_TIMEOUT
+        req_stream_timeout = (STREAM_TIMEOUT, read_timeout)
         for attempt in range(MAX_RETRIES + 1):
             if cancel is not None and cancel.is_set():
                 return
@@ -190,7 +202,7 @@ class AIClient:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=(STREAM_TIMEOUT, STREAM_READ_TIMEOUT),
+                    timeout=req_stream_timeout,
                     stream=True,
                 )
                 if response.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
@@ -233,11 +245,19 @@ class AIClient:
             raise StreamError("Tidak ada respons dari layanan AI streaming.")
 
         try:
+            last_content = time.monotonic()
             for raw in response.iter_lines():
                 if cancel is not None and cancel.is_set():
                     return
                 if not raw:
                     continue
+                if time.monotonic() - last_content > STREAM_STALL_TIMEOUT:
+                    response.close()
+                    raise StreamError(
+                        f"Streaming AI tidak menghasilkan konten selama "
+                        f"{STREAM_STALL_TIMEOUT:.0f} detik (kemungkinan layanan hang); "
+                        f"koneksi dihentikan agar tidak menggantung selamanya."
+                    )
                 line = (
                     raw.decode("utf-8", "replace")
                     if isinstance(raw, (bytes, bytearray))
@@ -266,8 +286,9 @@ class AIClient:
                         "Streaming AI terpotong karena batas token (finish_reason=length)."
                     )
                 delta = first_choice.get("delta") or {}
-                content = delta.get("content") or delta.get("reasoning_content")
+                content = delta.get("content")
                 if content:
+                    last_content = time.monotonic()
                     yield content
                 if cancel is not None and cancel.is_set():
                     return

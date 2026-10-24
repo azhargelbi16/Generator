@@ -4,8 +4,11 @@ Aplikasi desktop untuk menyusun laporan akademik berbahasa Indonesia dari sumber
 
 ## Instalasi
 
-1. Pastikan Python 3.12 terpasang di Windows.
-2. Klik dua kali `run.bat`. Skrip ini membuat virtual environment `.venv` saat pertama kali dijalankan, memasang semua paket dari `requirements.txt`, lalu membuka jendela aplikasi.
+1. Pastikan Python 3.11 atau 3.12 terpasang di komputer Anda.
+2. Jalankan aplikasi:
+   - **Windows**: Klik dua kali `run.bat`.
+   - **Linux / macOS**: Jalankan `./run.sh` di terminal.
+   Skrip otomatis membuat virtual environment `.venv` saat pertama kali dijalankan, memasang semua paket dari `requirements.txt`, lalu membuka jendela aplikasi desktop modern (antarmuka telah dikompilasi siap pakai di `frontend/dist/`).
 3. Cara manual bila diperlukan:
 
 ```
@@ -28,7 +31,7 @@ Tekan **Tes Koneksi** untuk memastikan layanan merespons, lalu **Simpan**.
 
 Catatan keamanan dan privasi:
 
-- API key disimpan apa adanya di `data/config.json`. Berkas itu diabaikan git dan isinya tidak pernah ditulis ke berkas log.
+- **Keamanan & Enkripsi Kunci API**: Kunci API dan konfigurasi sensitif disimpan terenkripsi secara otomatis menggunakan **Windows DPAPI (CryptProtectData)** pada Windows (dan isolasi kunci mesin berizin ketat `chmod 0o600` pada Linux/macOS). Berkas diabaikan dari git dan teks kunci API tidak pernah ditulis ke berkas log.
 - **Teks sumber yang Anda masukkan dikirim ke layanan AI** sebagai bahan penulisan dan verifikasi kutipan. Jangan memasukkan dokumen yang tidak boleh meninggalkan komputer kecuali layanan AI yang Anda pakai berjalan lokal.
 
 ## Panduan format template

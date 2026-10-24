@@ -125,13 +125,25 @@ def _enable_update_fields(doc) -> None:
 
 def _place_body(doc, paragraph: DocxParagraph, sections, labels, label_forms=None) -> None:
     defined: set[int] = set()
-    for section in sections:
+    for i, section in enumerate(sections):
         heading_style = _heading_style(doc, section.level)
         heading = _insert_paragraph_before(paragraph, section.title, heading_style)
         if heading_style == "Normal":
             for run in heading.runs:
                 run.bold = True
-        for block in section.paragraphs:
+
+        # Cegah duplikasi teks jika bab level 1 memiliki paragraf yang sama persis
+        # dengan subbab level 2 tepat di bawahnya (misal BAB 1 dan 1.1 Latar Belakang).
+        paragraphs = section.paragraphs
+        if section.level == 1 and i + 1 < len(sections) and sections[i + 1].level == 2:
+            next_p = sections[i + 1].paragraphs
+            if paragraphs and next_p:
+                cur_texts = [s.text.strip() for p in paragraphs for s in p.sentences if s.text.strip()]
+                next_texts = [s.text.strip() for p in next_p for s in p.sentences if s.text.strip()]
+                if cur_texts and cur_texts == next_texts:
+                    paragraphs = []
+
+        for block in paragraphs:
             block_labels = labels
             if label_forms:
                 # Kemunculan pertama memakai bentuk panjang, berikutnya bentuk pendek.

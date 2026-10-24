@@ -18,9 +18,10 @@ import { toast } from '../lib/toast';
 
 interface TabSettingsProps {
   onConfigSaved: () => void;
+  isActive?: boolean;
 }
 
-export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved }) => {
+export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved, isActive = false }) => {
   const [config, setConfig] = useState<AppConfig>({
     ai_base_url: 'http://localhost:1234/v1',
     ai_api_key: '',
@@ -42,6 +43,12 @@ export const TabSettings: React.FC<TabSettingsProps> = ({ onConfigSaved }) => {
   useEffect(() => {
     loadConfig();
   }, []);
+
+  useEffect(() => {
+    if (isActive) {
+      loadConfig();
+    }
+  }, [isActive]);
 
   const loadConfig = async () => {
     setLoading(true);

@@ -149,17 +149,25 @@ def in_text(
 
 
 def _format_author(author: Author) -> str:
+    # Nama dari AI kadang membawa titik/koma menempel ("Nurhaliza."); buang
+    # sebelum format agar tidak menjadi "Nurhaliza., & Wijaya." (F10).
+    family = author.family.strip().rstrip(".,").strip()
+    given = author.given.strip().rstrip(".,").strip()
+    if not family:
+        return ""
     if author.is_org:
-        text = author.family
-    elif author.given:
-        text = f"{author.family}, {initials(author.given)}"
+        text = family
+    elif given:
+        text = f"{family}, {initials(given)}"
     else:
-        text = author.family
+        text = family
     return text if text.endswith(".") else text + "."
 
 
 def _authors_reference(authors: list[Author]) -> str:
-    formatted = [_format_author(author) for author in authors]
+    formatted = [name for name in (_format_author(author) for author in authors) if name]
+    if not formatted:
+        return ""
     if len(formatted) == 1:
         return formatted[0]
     if len(formatted) <= 20:
@@ -179,8 +187,9 @@ def reference(source: Source, *, suffix: str = "") -> str:
     year = source.year or "n.d."
     year_str = f"({year}{suffix})."
     segments: list[str] = []
-    if source.authors:
-        segments.append(f"{_authors_reference(source.authors)} {year_str}")
+    author_text = _authors_reference(source.authors) if source.authors else ""
+    if author_text:
+        segments.append(f"{author_text} {year_str}")
         if source.title:
             segments.append(f"{source.title}.")
     else:

@@ -134,21 +134,28 @@ export const App: React.FC = () => {
         <div className="flex-1 flex overflow-hidden relative bg-slate-50">
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'laporan' ? 'flex' : 'hidden'}`}>
             <TabLaporan
+              isActive={currentTab === 'laporan'}
               onGenerateComplete={handleGenerateComplete}
               onGeneratingChange={setIsGeneratingReport}
             />
           </div>
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'review' ? 'flex' : 'hidden'}`}>
-            <TabReview onExportSuccess={handleExportSuccess} />
+            <TabReview
+              isActive={currentTab === 'review'}
+              onExportSuccess={handleExportSuccess}
+            />
           </div>
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'data' ? 'flex' : 'hidden'}`}>
-            <TabData />
+            <TabData isActive={currentTab === 'data'} />
           </div>
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'template' ? 'flex' : 'hidden'}`}>
-            <TabTemplate />
+            <TabTemplate isActive={currentTab === 'template'} />
           </div>
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'settings' ? 'flex' : 'hidden'}`}>
-            <TabSettings onConfigSaved={() => checkAppStatus(true)} />
+            <TabSettings
+              isActive={currentTab === 'settings'}
+              onConfigSaved={() => checkAppStatus(true)}
+            />
           </div>
         </div>
 

@@ -57,8 +57,8 @@ def _source_from_dict(data: dict) -> Source:
                 continue
             authors.append(
                 Author(
-                    family=repair_mojibake(_text_field(entry, "family")),
-                    given=repair_mojibake(_text_field(entry, "given")),
+                    family=repair_mojibake(_text_field(entry, "family")).strip().rstrip(".,").strip(),
+                    given=repair_mojibake(_text_field(entry, "given")).strip().rstrip(".,").strip(),
                     is_org=bool(entry.get("is_org", False)),
                     abbrev=_text_field(entry, "abbrev"),
                 )

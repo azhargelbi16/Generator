@@ -162,7 +162,11 @@ const REQUIRED_TAGS_DEF: RequiredTagDef[] = [
   },
 ];
 
-export const TabTemplate: React.FC = () => {
+interface TabTemplateProps {
+  isActive?: boolean;
+}
+
+export const TabTemplate: React.FC<TabTemplateProps> = ({ isActive = false }) => {
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -189,6 +193,12 @@ export const TabTemplate: React.FC = () => {
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  useEffect(() => {
+    if (isActive) {
+      loadTemplates();
+    }
+  }, [isActive]);
 
   const loadTemplates = async () => {
     setLoading(true);

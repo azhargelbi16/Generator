@@ -29,7 +29,7 @@ class Check:
 
 @dataclass
 class PreflightIssue:
-    kind: str  # "mojibake" | "filename" | "citation_style" | "logo_missing" | "pending"
+    kind: str  # "mojibake" | "filename" | "citation_style" | "logo_missing" | "pending" | "citations" | "empty_sections"
     message: str
 
 
@@ -99,6 +99,43 @@ def _citation_problems(
     return problems
 
 
+def _uncited_factual(statuses: list[SentenceStatus]) -> list[int]:
+    """Indeks kalimat faktual yang tidak membawa satu pun sitasi."""
+    return [
+        item.index
+        for item in statuses
+        if item.sentence.is_factual and not item.sentence.source_ids
+    ]
+
+
+def _empty_section_titles(sections: list[Section] | None) -> list[str]:
+    """Judul bagian yang tidak punya kalimat, langsung maupun lewat subbabnya.
+
+    Judul bab level-1 (mis. "BAB 1. PENDAHULUAN") biasanya memang tanpa
+    paragraf sendiri karena isi hidup di subbab 1.1, 1.2, dst.; menghitungnya
+    "kosong" membuat peringatan palsu di Pemeriksaan Akhir (F6).
+    """
+    if not sections:
+        return []
+    # Tandai bagian yang subtree-nya kosong; gunakan posisi (bukan .index)
+    # agar section duplikat tidak salah menjawab ke kemunculan pertama.
+    has_own = {id(s): bool(s.paragraphs) for s in sections}
+    subtree_has = {id(s): False for s in sections}
+    for index, section in enumerate(sections):
+        if not section.paragraphs:
+            for follow in sections[index + 1:]:
+                if follow.level <= section.level:
+                    break
+                if follow.paragraphs:
+                    subtree_has[id(section)] = True
+                    break
+    return [
+        section.title
+        for section in sections
+        if section.title.strip() and not has_own[id(section)] and not subtree_has[id(section)]
+    ]
+
+
 def run_checks(
     judul: str,
     sources: list[Source],
@@ -107,15 +144,23 @@ def run_checks(
     logo_path: Path | None,
     style: str = "et_al",
     done: frozenset[str] = frozenset(),
+    sections: list[Section] | None = None,
 ) -> list[Check]:
-    """Baris status pemeriksaan akhir; selalu berisi keenam baris."""
+    """Baris status pemeriksaan akhir; berisi baris wajib plus baris konten."""
     export_ok, export_msg = can_export(statuses, done)
     labels = labels_for(sources, cited, style=style)
     references = references_for(sources, cited)
     mojibake = _mojibake_names(sources)
     safe_name = sanitize_filename(judul)
     problems = _citation_problems(sources, statuses, cited)
-    return [
+    uncited = _uncited_factual(statuses)
+    has_factual = any(item.sentence.is_factual for item in statuses)
+    if not problems and uncited:
+        problems = [f"{len(uncited)} kalimat faktual tanpa sitasi"]
+    elif not problems and has_factual and not references:
+        problems = ["daftar pustaka akan kosong"]
+    empty_titles = _empty_section_titles(sections)
+    checks = [
         Check("Kalimat tertunda", export_ok, export_msg),
         Check(
             "Sitasi & pustaka konsisten",
@@ -127,6 +172,17 @@ def run_checks(
         Check("Logo", _logo_ok(logo_path), str(logo_path or "Belum dipilih")),
         Check("Gaya sitasi", style in _STYLE_LABEL, _STYLE_LABEL.get(style, f"Tidak didukung: {style}")),
     ]
+    if empty_titles:
+        preview = ", ".join(empty_titles[:3])
+        lebih = f" (+{len(empty_titles) - 3} lagi)" if len(empty_titles) > 3 else ""
+        checks.append(
+            Check(
+                "Bagian tanpa isi",
+                False,
+                f"{len(empty_titles)} bagian kosong: {preview}{lebih}",
+            )
+        )
+    return checks
 
 
 def find_issues(
@@ -137,12 +193,36 @@ def find_issues(
     logo_path: Path | None,
     style: str = "et_al",
     done: frozenset[str] = frozenset(),
+    sections: list[Section] | None = None,
 ) -> list[PreflightIssue]:
     """Temuan yang memicu dialog Pemeriksaan Akhir; kosong berarti ekspor langsung."""
     issues: list[PreflightIssue] = []
     tertunda = pending(statuses, done)
     if tertunda:
         issues.append(PreflightIssue("pending", f"Masih ada {len(tertunda)} kalimat tertunda."))
+    uncited = _uncited_factual(statuses)
+    if uncited:
+        issues.append(
+            PreflightIssue(
+                "citations",
+                f"{len(uncited)} kalimat faktual tidak membawa sitasi apa pun.",
+            )
+        )
+    has_factual = any(item.sentence.is_factual for item in statuses)
+    if not uncited and has_factual and not references_for(sources, cited):
+        issues.append(
+            PreflightIssue("citations", "Daftar pustaka akan kosong padahal ada kalimat faktual.")
+        )
+    empty_titles = _empty_section_titles(sections)
+    if empty_titles:
+        preview = ", ".join(empty_titles[:3])
+        lebih = f" (+{len(empty_titles) - 3} lagi)" if len(empty_titles) > 3 else ""
+        issues.append(
+            PreflightIssue(
+                "empty_sections",
+                f"{len(empty_titles)} bagian masih kosong: {preview}{lebih}.",
+            )
+        )
     mojibake = _mojibake_names(sources)
     if mojibake:
         issues.append(

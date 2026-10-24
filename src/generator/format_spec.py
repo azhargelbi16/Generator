@@ -223,6 +223,26 @@ def skeleton_lines(variant: Variant) -> list[str]:
     return lines
 
 
+def chapter_sub_outlines(variant: Variant) -> list[tuple[str, list[str]]]:
+    """Kelompokkan outline per bab lengkap dengan subbabnya untuk penulisan AI yang mendalam."""
+    entries = _entries(variant)
+    chapters: list[tuple[str, list[str]]] = []
+    current_chapter: str | None = None
+    current_subs: list[str] = []
+    for entry in entries:
+        if entry.level == 1:
+            if current_chapter is not None:
+                chapters.append((current_chapter, current_subs))
+            current_chapter = f"{entry.number} {entry.title}"
+            current_subs = [current_chapter]
+        else:
+            clean_title = entry.title.replace("{", "").replace("}", "")
+            current_subs.append(f"{entry.number} {clean_title}")
+    if current_chapter is not None:
+        chapters.append((current_chapter, current_subs))
+    return chapters
+
+
 def outline_titles(variant: Variant) -> list[str]:
     """Judul bab bernomor untuk mengisi editor outline."""
     return [f"{entry.number} {entry.title}" for entry in _entries(variant) if entry.level == 1]
@@ -337,9 +357,23 @@ def normalize_sections(variant: Variant, sections: list) -> list:
     blocks: dict[int, list] = {index: [] for index in range(len(chapters))}
     current: int | None = None
     for section in sections:
+        raw_title = str(section.title or "").strip()
         title = _clean_title(section.title)
-        if section.level <= 1 or title.casefold().startswith("bab "):
-            index = _match_chapter(_key(title), chapters, heading_used)
+        chap_match = re.match(r"^\s*bab\s*([0-9ivxlc]+)", raw_title, re.IGNORECASE)
+        sub_match = re.match(r"^\s*(\d+)\.", raw_title)
+        is_chapter_heading = section.level <= 1 or bool(chap_match) or raw_title.casefold().startswith("bab ")
+        if is_chapter_heading:
+            index = None
+            if chap_match:
+                chap_str = chap_match.group(1)
+                try:
+                    c_num = int(chap_str)
+                    if 1 <= c_num <= len(chapters):
+                        index = c_num - 1
+                except ValueError:
+                    pass
+            if index is None:
+                index = _match_chapter(_key(title), chapters, heading_used)
             if index is None:
                 index = next(
                     (candidate for candidate in range(len(chapters)) if candidate not in heading_used),
@@ -349,10 +383,21 @@ def normalize_sections(variant: Variant, sections: list) -> list:
             current = index
             chapter_body[index].extend(section.paragraphs)
             continue
-        if current is None:
-            current = _chapter_for_title(_key(title), entries, chapters)
-        if current is not None:
-            blocks[current].append(section)
+        target_chap = None
+        if sub_match:
+            try:
+                c_num = int(sub_match.group(1))
+                if 1 <= c_num <= len(chapters):
+                    target_chap = c_num - 1
+            except ValueError:
+                pass
+        if target_chap is None:
+            target_chap = current
+        if target_chap is None:
+            target_chap = _chapter_for_title(_key(title), entries, chapters)
+        if target_chap is not None:
+            blocks[target_chap].append(section)
+            current = target_chap
 
     result: list = []
     for index, chapter in enumerate(chapters):
@@ -383,6 +428,10 @@ def normalize_sections(variant: Variant, sections: list) -> list:
                 skip_children.add(entry.number)
                 continue
             title = titles.get(entry.number) or entry.title
+            # Cerdas: Jika subbab pertama (misal 1.1 Latar Belakang) kosong tapi bab induk punya teks,
+            # sematkan teks bab induk agar subbab tidak kosong di berkas dokumen
+            if not _has_text(paragraphs) and entry.number == f"{chapter.chapter}.1" and _has_text(chapter_body.get(index, [])):
+                paragraphs = list(chapter_body.get(index, []))
             result.append(Section(entry.level, f"{entry.number} {title}", paragraphs))
         for extra in extras:
             next_sub += 1
