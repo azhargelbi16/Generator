@@ -88,6 +88,8 @@ export interface SourceRecord {
   kind?: string;
   /** Cakupan isi sumber: fulltext | partial | abstract | metadata_only */
   content_status?: string;
+  /** ID ephemeral untuk mencocokkan event pengayaan metadata latar */
+  ref?: string;
 }
 
 export interface Sentence {

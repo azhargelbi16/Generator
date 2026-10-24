@@ -177,6 +177,27 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   useEffect(() => {
     loadInitialData();
 
+    // Metadata sumber diperkaya AI di latar setelah sumber ditambahkan
+    // (unggah tetap instan); gabungkan hasilnya ke kartu yang cocok.
+    const handleMetadataReady = (e: any) => {
+      const d = e?.detail || {};
+      if (!d.ref) return;
+      setSources((prev) => prev.map((s, idx) => {
+        if (s.ref !== d.ref) return s;
+        const authors = Array.isArray(d.authors) && d.authors.length > 0 ? d.authors : s.authors;
+        return {
+          ...s,
+          title: d.title || s.title,
+          year: d.year || s.year,
+          container: d.container || s.container,
+          doi: d.doi || s.doi,
+          url: d.url || s.url,
+          authors,
+        };
+      }));
+      toast.info('Metadata sumber diperbaiki otomatis dari isi dokumen (AI). Koreksi manual tetap bisa lewat kartu sumber.');
+    };
+
     // Listen to pywebview custom events
     const handleBatchProgress = (e: any) => {
       setGenProgress(e.detail);
@@ -225,12 +246,14 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     window.addEventListener('gen_sentence_born', handleSentenceBorn);
     window.addEventListener('gen_complete', handleGenComplete);
     window.addEventListener('gen_error', handleGenError);
+    window.addEventListener('source_metadata_ready', handleMetadataReady);
 
     return () => {
       window.removeEventListener('gen_batch_progress', handleBatchProgress);
       window.removeEventListener('gen_sentence_born', handleSentenceBorn);
       window.removeEventListener('gen_complete', handleGenComplete);
       window.removeEventListener('gen_error', handleGenError);
+      window.removeEventListener('source_metadata_ready', handleMetadataReady);
     };
   }, []);
 
@@ -285,19 +308,22 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   };
 
   const loadInitialData = async () => {
+    // allSettled (bukan Promise.all): satu panggilan gagal tidak boleh
+    // mengosongkan SEMUA dropdown — dosen/matkul/logo/template tetap terisi
+    // dan kegagalan yang ada dilaporkan eksplisit.
     try {
       const [d, m, l, t, v, draft] = await Promise.all([
-        api.listDosen(),
-        api.listMatkul(),
-        api.listLogos(),
-        api.listTemplates(),
-        api.getFormatVariants(),
-        api.loadActiveDraft(),
+        api.listDosen().catch((err) => { console.error('[listDosen]', err); return null; }),
+        api.listMatkul().catch((err) => { console.error('[listMatkul]', err); return null; }),
+        api.listLogos().catch((err) => { console.error('[listLogos]', err); return null; }),
+        api.listTemplates().catch((err) => { console.error('[listTemplates]', err); return null; }),
+        api.getFormatVariants().catch((err) => { console.error('[getFormatVariants]', err); return null; }),
+        api.loadActiveDraft().catch((err) => { console.error('[loadActiveDraft]', err); return null; }),
       ]);
 
-      if (d) setDosenList(d);
-      if (m) setMatkulList(m);
-      if (l) setLogoList(l);
+      if (Array.isArray(d) && d.length >= 0) setDosenList(d);
+      if (Array.isArray(m)) setMatkulList(m);
+      if (Array.isArray(l)) setLogoList(l);
       if (t) {
         setTemplates(t);
         setSelectedTemplateId((prev) => {

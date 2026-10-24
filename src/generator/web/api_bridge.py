@@ -657,24 +657,66 @@ class ApiBridge:
                         url=doi_record.get("url", ""),
                     )
             except Exception as exc:
-                log.info(f"Resolusi cepat DOI dilewati ({exc}), beralih ke ekstraksi metadata dokumen / AI.")
+                log.info(f"Resolusi cepat DOI dilewati ({exc}), beralih ke ekstraksi metadata dokumen.")
 
+        # Pengalaman unggah harus secepat unggah ke cloud: sumber langsung
+        # dipakai dengan metadata dokumen apa adanya (judul fallback = nama
+        # berkas); ekstraksi bibliografi AI berat dijalankan di latar dan
+        # hasilnya dikirim lewat event `source_metadata_ready`.
         if resolved_source and resolved_source.title:
             merged = resolved_source
+            needs_enrichment = not merged.authors
         else:
-            cl = AIClient(self._cfg)
-            try:
-                source = bibliography.extract_source(text, cl)
-            except (AIError, bibliography.BibliographyError):
-                source = Source([], "", "")
-
-            merged = bibliography.merge_metadata(source, doc_meta)
+            merged = bibliography.merge_metadata(Source([], "", ""), doc_meta)
+            needs_enrichment = True
 
         if not merged.title:
             merged = Source(merged.authors, merged.year, pdf_path.stem, merged.container, merged.doi, merged.url)
 
         record = source_to_record(merged, text, "pdf")
+        record["ref"] = f"pdf-{datetime.now().strftime('%H%M%S%f')}-{len(text)}"
+        if needs_enrichment:
+            self._start_metadata_enrichment(record["ref"], text)
         return {"success": True, "record": record}
+
+    def _start_metadata_enrichment(self, ref: str, text: str) -> None:
+        """Ekstraksi bibliografi AI di thread latar; hasil via event.
+
+        Gagal = diam-diam dicatat di log; metadata manual dari pengguna tetap
+        menjadi sumber akhir (form koreksi metadata selalu menang).
+        """
+
+        def run() -> None:
+            try:
+                cl = AIClient(self._cfg)
+                source = bibliography.extract_source(text, cl)
+            except (AIError, bibliography.BibliographyError) as exc:
+                log.info(f"Enrichment metadata sumber {ref} gagal: {exc}")
+                return
+            except Exception:
+                log.exception(f"Enrichment metadata sumber {ref} error tak terduga")
+                return
+            if not (source and (source.authors or source.title)):
+                return
+            self._emit("source_metadata_ready", {
+                "ref": ref,
+                "title": source.title,
+                "year": source.year,
+                "container": source.container,
+                "doi": source.doi,
+                "url": source.url,
+                "authors": [
+                    {
+                        "family": a.family,
+                        "given": a.given,
+                        "is_org": bool(a.is_org),
+                        "abbrev": a.abbrev,
+                    }
+                    for a in source.authors
+                ],
+            })
+
+        threading.Thread(target=run, daemon=True, name=f"meta-{ref}").start()
 
     def add_web_source(self, url: str) -> dict[str, Any]:
         url = url.strip()
@@ -686,14 +728,15 @@ class ApiBridge:
         except Exception as e:
             return {"success": False, "error": f"Gagal mengambil halaman web: {e}"}
 
-        cl = AIClient(self._cfg)
-        try:
-            source = bibliography.extract_source(text, cl)
-        except (AIError, bibliography.BibliographyError):
-            source = Source([], "", "")
+        # Metadata halaman dipakai seketika; bibliografi AI diperkaya di latar
+        # (event source_metadata_ready) supaya menambah sumber terasa instan.
+        merged = bibliography.merge_metadata(Source([], "", ""), meta)
+        if not merged.title:
+            merged = Source(merged.authors, merged.year, url, merged.container, merged.doi, merged.url)
 
-        merged = bibliography.merge_metadata(source, meta)
         record = source_to_record(merged, text, "web")
+        record["ref"] = f"web-{datetime.now().strftime('%H%M%S%f')}-{len(text)}"
+        self._start_metadata_enrichment(record["ref"], text)
         return {"success": True, "record": record}
 
     def add_manual_source(self, text: str) -> dict[str, Any]:
@@ -730,16 +773,15 @@ class ApiBridge:
 
         if resolved_source and resolved_source.title:
             merged = resolved_source
+            needs_enrichment = False
         else:
-            cl = AIClient(self._cfg)
-            try:
-                source = bibliography.extract_source(text, cl)
-            except (AIError, bibliography.BibliographyError):
-                source = Source([], "", "Teks Manual")
-
-            merged = bibliography.merge_metadata(source, {})
+            merged = Source([], "", "Teks Manual")
+            needs_enrichment = True
 
         record = source_to_record(merged, text, "manual")
+        record["ref"] = f"manual-{datetime.now().strftime('%H%M%S%f')}-{len(text)}"
+        if needs_enrichment:
+            self._start_metadata_enrichment(record["ref"], text)
         return {"success": True, "record": record}
 
     def generate_title_from_sources(self, sources_data: list[dict[str, Any]]) -> dict[str, Any]:
