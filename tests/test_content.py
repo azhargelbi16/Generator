@@ -550,3 +550,130 @@ def test_prune_noise_from_source_text():
     assert "Daftar Pustaka" not in pruned
     assert "Smith, J." not in pruned
     assert "efisiensi sebesar 94%" in pruned
+
+
+# --- Slice arsitektur 3: jalur varian per bab memakai langkah generasi sama --
+
+VARIANT_B_OUTLINE = [
+    "BAB 1. PENDAHULUAN", "1.1 Latar Belakang", "1.2 Rumusan Masalah", "1.3 Tujuan",
+    "BAB 2. TINJAUAN PUSTAKA", "2.1 Subjek", "2.2 Objek",
+    "BAB 3. HASIL DAN PEMBAHASAN", "3.1 Hasil", "3.2 Pembahasan",
+    "BAB 4. KESIMPULAN DAN SARAN", "4.1 Kesimpulan", "4.2 Saran",
+]
+
+
+def _chapter_reply(title: str, text: str) -> str:
+    return json.dumps({"sections": [{
+        "level": 1, "title": title,
+        "paragraphs": [{"sentences": [
+            {"text": text, "quote": text, "source_ids": [0], "is_factual": True}
+        ]}],
+    }]}, ensure_ascii=False)
+
+
+def _variant_client(replies):
+    """FakeClient yang mencatat kwarg chat (max_tokens/timeout) per panggilan."""
+    class KwargsClient:
+        def __init__(self, replies):
+            self.replies = list(replies)
+            self.calls = 0
+            self.kwargs_seen = []
+
+        def chat(self, messages, json_mode=False, max_tokens=None, timeout=None):
+            self.calls += 1
+            self.kwargs_seen.append({"max_tokens": max_tokens, "timeout": timeout})
+            return self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
+
+    return KwargsClient(replies)
+
+
+def _variant_sources():
+    return [Source([Author("Santoso", "Budi")], "2020", "T", "J")]
+
+
+def test_jalur_varian_per_bab_event_berurutan_dan_struktur_lengkap():
+    from generator.ai.content import generate_sections as gen
+
+    replies = [
+        _chapter_reply("BAB 1. PENDAHULUAN", "Latar belakang biochar di tanah asam."),
+        _chapter_reply("BAB 2. TINJAUAN PUSTAKA", "Kajian terdahulu tentang pembenah tanah."),
+        _chapter_reply("BAB 3. HASIL DAN PEMBAHASAN", "Hasil uji menunjukkan pH naik."),
+        _chapter_reply("BAB 4. KESIMPULAN DAN SARAN", "Biochar efektif pada dosis tepat."),
+    ]
+    progress = ProgressRecorder()
+    sections = gen(
+        "tema", VARIANT_B_OUTLINE, _variant_sources(), ["teks sumber jurnal."],
+        _variant_client(replies), progress=progress, variant="b",
+    )
+    assert progress.batches == [(1, 4), (2, 4), (3, 4), (4, 4)]
+    assert progress.finished_flags == [False]
+    assert len(progress.born) == 4  # satu kalimat per bab, berurutan
+    titles = [s.title for s in sections]
+    assert titles[0] == "BAB 1. PENDAHULUAN"
+    assert "BAB 4. KESIMPULAN DAN SARAN" in titles
+    assert len(titles) >= 4
+
+
+def test_jalur_varian_mengirim_max_tokens_8192_dan_timeout_240():
+    from generator.ai.content import generate_sections as gen
+
+    replies = [_chapter_reply(f"BAB {n}. X", f"Isi bab {n}.") for n in range(1, 5)]
+    client = _variant_client(replies)
+    gen("tema", VARIANT_B_OUTLINE, _variant_sources(), ["teks sumber."],
+        client, variant="b")
+    assert client.calls == 4
+    assert all(kw == {"max_tokens": 8192, "timeout": 240.0} for kw in client.kwargs_seen)
+
+
+def test_jalur_batch_mengirim_max_tokens_16384_tanpa_timeout():
+    from generator.ai.content import generate_sections as gen
+
+    client = _variant_client([REPLY])
+    gen("tema", ["Pendahuluan"], _variant_sources(), ["teks sumber."], client)
+    assert client.calls == 1
+    assert client.kwargs_seen[0] == {"max_tokens": 16384, "timeout": None}
+
+
+def test_jalur_varian_partial_output_dipulihkan_dari_aierror():
+    from generator.ai.content import generate_sections as gen
+    from generator.ai.client import AIError
+
+    class PartialClient:
+        def __init__(self):
+            self.calls = 0
+
+        def chat(self, messages, json_mode=False, max_tokens=None, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                exc = AIError("Respons terpotong karena batas token.")
+                exc.partial_content = _chapter_reply("BAB 1. PENDAHULUAN", "Kalimat parsial yang selamat.")
+                raise exc
+            return _chapter_reply("BAB 2. TINJAUAN PUSTAKA", "Kajian lanjutan.")
+
+    progress = ProgressRecorder()
+    sections = gen(
+        "tema", VARIANT_B_OUTLINE, _variant_sources(), ["teks sumber."],
+        PartialClient(), progress=progress, variant="b",
+    )
+    texts = [s.text for sec in sections for p in sec.paragraphs for s in p.sentences]
+    assert "Kalimat parsial yang selamat." in texts
+    assert "Kajian lanjutan." in texts
+    assert progress.finished_flags == [False]
+
+
+def test_cancel_jalur_varian_menghentikan_dan_menyimpan_sebagian():
+    from generator.ai.content import generate_sections as gen
+
+    cancel = threading.Event()
+    progress = ProgressRecorder(cancel_after=2)
+    progress.cancel = cancel
+    replies = [_chapter_reply(f"BAB {n}. X", f"Isi bab {n}.") for n in range(1, 5)]
+    client = _variant_client(replies)
+    sections = gen(
+        "tema", VARIANT_B_OUTLINE, _variant_sources(), ["teks sumber."],
+        client, progress=progress, cancel=cancel, variant="b",
+    )
+    assert progress.finished_flags == [True]
+    assert client.calls == 2  # bab 3-4 tidak pernah diminta
+    texts = [s.text for sec in sections for p in sec.paragraphs for s in p.sentences]
+    assert len(texts) >= 2

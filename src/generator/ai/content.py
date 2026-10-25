@@ -487,6 +487,93 @@ def select_relevant_outline(outline: list[str], batch: list[tuple[int, str]]) ->
     return [t for t in outline if t in target_set]
 
 
+@dataclass
+class _StepOutcome:
+    """Hasil satu langkah generasi (bab varian atau batch biasa)."""
+
+    cancelled: bool = False
+    merged: bool = False
+
+
+def _run_generation_step(
+    sections: list[Section],
+    *,
+    label: str,
+    messages: list[dict],
+    client,
+    progress: "GenerationProgress | None",
+    cancel,
+    emitted: set[str],
+    source_texts_by_id: dict[int, str],
+    max_tokens: int,
+    chat_timeout: float | None = None,
+    repair_truncated: bool = False,
+) -> _StepOutcome:
+    """Satu langkah generasi: streaming → fallback chat → perbaikan JSON →
+    pemulihan parsial → penggabungan.
+
+    Kebijakan ini dulunya diduplikasi di jalur varian (per bab) dan jalur
+    batch biasa dengan beda kecil (batas token, timeout, perbaikan JSON
+    terpotong, label log); keduanya kini memanggil sini agar kebijakan tidak
+    bisa saling meleset. Mengembalikan apakah langkah dibatalkan dan apakah
+    ada konten yang berhasil digabung.
+    """
+    import inspect
+
+    data = None
+    collected: list[tuple[str, Sentence]] = []
+    use_stream = progress is not None and hasattr(client, "chat_stream")
+    if use_stream:
+        data, collected = _stream_batch(
+            client, messages, progress, source_texts_by_id, cancel, emitted
+        )
+    if cancel is not None and cancel.is_set():
+        if collected:
+            _merge_sections(sections, _partial_sections(collected))
+        return _StepOutcome(cancelled=True, merged=bool(collected))
+
+    if not use_stream or data is None:
+        try:
+            chat_kwargs = {"json_mode": True}
+            try:
+                sig = inspect.signature(client.chat)
+                if "max_tokens" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    chat_kwargs["max_tokens"] = max_tokens
+                if chat_timeout is not None and "timeout" in sig.parameters:
+                    chat_kwargs["timeout"] = chat_timeout
+            except Exception:
+                pass
+            reply = client.chat(messages, **chat_kwargs)
+            data = _first_json_object(reply)
+            if data is None and repair_truncated:
+                data = repair_truncated_json(reply)
+            if data is not None and progress is not None:
+                _reveal_sentences(data, progress, source_texts_by_id, emitted)
+        except AIError as exc:
+            _logger.warning("%s gagal diproses AI: %s", label, exc)
+            partial = getattr(exc, "partial_content", None)
+            if partial:
+                data = _first_json_object(partial)
+                if data is None and repair_truncated:
+                    data = repair_truncated_json(partial)
+                if data is not None and progress is not None:
+                    _reveal_sentences(data, progress, source_texts_by_id, emitted)
+            else:
+                data = None
+
+    if data is not None:
+        _merge_sections(sections, _sections_from_dict(data))
+        return _StepOutcome(merged=True)
+    if collected:
+        _logger.info(
+            "%s: Menggunakan %d kalimat yang dialirkan sebelum batas respon.",
+            label, len(collected),
+        )
+        _merge_sections(sections, _partial_sections(collected))
+        return _StepOutcome(merged=True)
+    return _StepOutcome(merged=False)
+
+
 def generate_sections(
     topic: str,
     outline: list[str],
@@ -554,7 +641,6 @@ def generate_sections(
     if variant_spec is not None and hasattr(format_spec, "chapter_sub_outlines") and len(outline) > 1:
         chapter_plans = format_spec.chapter_sub_outlines(variant_spec)
         total_steps = len(chapter_plans)
-        # Seluruh sumber dimasukkan ke referensi bab agar komparasi antar paper berjalan optimal
         ref_chunks = chunk_refs if len(chunk_refs) <= 30 else batches[0]
         for number, (chap_title, sub_outlines) in enumerate(chapter_plans, start=1):
             if cancel is not None and cancel.is_set():
@@ -567,49 +653,23 @@ def generate_sections(
                 topic, sub_outlines, sources, ref_chunks,
                 variant=variant_spec.code if variant_spec is not None else None,
             )
-            data = None
-            collected: list[tuple[str, Sentence]] = []
-            use_stream = progress is not None and hasattr(client, "chat_stream")
-            if use_stream:
-                data, collected = _stream_batch(
-                    client, messages, progress, source_texts_by_id, cancel, emitted
-                )
-            if cancel is not None and cancel.is_set():
+            outcome = _run_generation_step(
+                sections,
+                label=f"Bab {number} ({chap_title})",
+                messages=messages,
+                client=client,
+                progress=progress,
+                cancel=cancel,
+                emitted=emitted,
+                source_texts_by_id=source_texts_by_id,
+                max_tokens=8192,
+                chat_timeout=240.0,
+                repair_truncated=True,
+            )
+            if outcome.cancelled:
                 cancelled = True
-                if collected:
-                    _merge_sections(sections, _partial_sections(collected))
                 break
-            if not use_stream or data is None:
-                try:
-                    import inspect
-                    chat_kwargs = {"json_mode": True}
-                    try:
-                        sig = inspect.signature(client.chat)
-                        if "max_tokens" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                            chat_kwargs["max_tokens"] = 8192
-                        if "timeout" in sig.parameters:
-                            chat_kwargs["timeout"] = 240.0
-                    except Exception:
-                        pass
-                    reply = client.chat(messages, **chat_kwargs)
-                    data = _first_json_object(reply) or repair_truncated_json(reply)
-                    if data is not None and progress is not None:
-                        _reveal_sentences(data, progress, source_texts_by_id, emitted)
-                except AIError as exc:
-                    _logger.warning("Bab %d (%s) gagal diproses AI: %s", number, chap_title, exc)
-                    partial = getattr(exc, "partial_content", None)
-                    if partial:
-                        data = _first_json_object(partial) or repair_truncated_json(partial)
-                        if data is not None and progress is not None:
-                            _reveal_sentences(data, progress, source_texts_by_id, emitted)
-                    else:
-                        data = None
-            if data is not None:
-                _merge_sections(sections, _sections_from_dict(data))
-            elif collected:
-                _logger.info("Bab %d: Menggunakan %d kalimat yang dialirkan sebelum batas respon.", number, len(collected))
-                _merge_sections(sections, _partial_sections(collected))
-            else:
+            if not outcome.merged:
                 gagal += 1
     else:
         for number, batch in enumerate(batches, start=1):
@@ -630,49 +690,22 @@ def generate_sections(
                 topic, target_outline, sources, batch,
                 variant=variant_spec.code if variant_spec is not None else None,
             )
-            data = None
-            collected: list[tuple[str, Sentence]] = []
-            use_stream = progress is not None and hasattr(client, "chat_stream")
-            if use_stream:
-                data, collected = _stream_batch(
-                    client, messages, progress, source_texts_by_id, cancel, emitted
-                )
-            if cancel is not None and cancel.is_set():
+            outcome = _run_generation_step(
+                sections,
+                label=f"Batch {number}",
+                messages=messages,
+                client=client,
+                progress=progress,
+                cancel=cancel,
+                emitted=emitted,
+                source_texts_by_id=source_texts_by_id,
+                max_tokens=16384,
+            )
+            if outcome.cancelled:
                 cancelled = True
-                if collected:
-                    _merge_sections(sections, _partial_sections(collected))
                 break
-            if not use_stream or data is None:
-                try:
-                    import inspect
-                    chat_kwargs = {"json_mode": True}
-                    try:
-                        sig = inspect.signature(client.chat)
-                        if "max_tokens" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                            chat_kwargs["max_tokens"] = 16384
-                    except Exception:
-                        pass
-                    reply = client.chat(messages, **chat_kwargs)
-                    data = _first_json_object(reply)
-                    if data is not None and progress is not None:
-                        _reveal_sentences(data, progress, source_texts_by_id, emitted)
-                except AIError as exc:
-                    _logger.warning("Batch %d gagal diproses oleh AI: %s", number, exc)
-                    partial = getattr(exc, "partial_content", None)
-                    if partial:
-                        data = _first_json_object(partial)
-                        if data is not None and progress is not None:
-                            _reveal_sentences(data, progress, source_texts_by_id, emitted)
-                    else:
-                        data = None
-            if data is None:
-                if collected:
-                    _logger.info("Batch %d: Menggunakan %d kalimat yang berhasil dialirkan sebelum batas respon.", number, len(collected))
-                    _merge_sections(sections, _partial_sections(collected))
-                    continue
+            if not outcome.merged:
                 gagal += 1
-                continue
-            _merge_sections(sections, _sections_from_dict(data))
     if progress is not None:
         progress.finished(cancelled)
     if cancelled:
