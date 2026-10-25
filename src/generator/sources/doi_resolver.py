@@ -13,9 +13,8 @@ from typing import Any
 
 import requests
 
-from ..ai.citation import Author, Source
+from ..sources.intake import source_from_crossref_message
 from ..sources.records import source_to_record
-from ..textutil import repair_mojibake
 
 log = logging.getLogger("generator.sources.doi")
 
@@ -62,53 +61,12 @@ def fetch_doi_metadata(doi_or_url: str) -> dict[str, Any]:
 
     msg = data.get("message", {})
 
-    # 1. Judul
-    titles = msg.get("title") or []
-    title = repair_mojibake(titles[0] if titles else "Tanpa Judul")
+    src = source_from_crossref_message(doi, msg)
 
-    # 2. Penulis
-    authors: list[Author] = []
-    raw_authors = msg.get("author") or []
-    for a in raw_authors:
-        if not isinstance(a, dict):
-            continue
-        family = repair_mojibake(str(a.get("family", "")).strip())
-        given = repair_mojibake(str(a.get("given", "")).strip())
-        name = repair_mojibake(str(a.get("name", "")).strip())
-
-        if family:
-            authors.append(Author(family=family, given=given, is_org=False))
-        elif name:
-            authors.append(Author(family=name, given="", is_org=True))
-
-    # 3. Tahun
-    year = ""
-    date_parts = msg.get("issued", {}).get("date-parts") or msg.get("published-print", {}).get("date-parts") or msg.get("published-online", {}).get("date-parts")
-    if date_parts and isinstance(date_parts, list) and len(date_parts) > 0 and len(date_parts[0]) > 0:
-        val = date_parts[0][0]
-        if val is not None:
-            year = str(val)
-
-    # 4. Container / Nama Jurnal
-    containers = msg.get("container-title") or []
-    container = repair_mojibake(containers[0] if containers else "")
-
-    # 5. URL
-    doi_val = msg.get("DOI", doi)
-    canonical_url = msg.get("URL", f"https://doi.org/{doi_val}")
-
-    # 6. Abstrak sebagai teks sumber awal jika ada
+    # Abstrak sebagai teks sumber awal jika ada
     abstract = str(msg.get("abstract", "") or "").strip()
-    # Bersihkan tag XML/HTML jika ada
     clean_abstract = re.sub(r"<[^>]+>", "", abstract).strip()
-    source_text = clean_abstract or f"{title}. Diterbitkan di {container} ({year}). DOI: {doi_val}"
-
-    src = Source(
-        authors=authors,
-        year=year,
-        title=title,
-        container=container,
-        doi=doi_val,
-        url=canonical_url,
+    source_text = clean_abstract or (
+        f"{src.title}. Diterbitkan di {src.container} ({src.year}). DOI: {src.doi}"
     )
     return source_to_record(src, source_text, kind="doi")

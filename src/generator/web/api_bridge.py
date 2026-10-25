@@ -21,6 +21,7 @@ from ..ai.citation import Source, Author
 from ..ai.client import AIClient, AIError
 from ..document import renderer, template, placeholders
 from ..sources import pdf_reader, web_reader, doi_resolver
+from ..sources import intake
 from ..sources.records import (
     DRAFT_ACTIVE_ID,
     normalize_metadata,
@@ -633,50 +634,18 @@ class ApiBridge:
         except Exception as e:
             return {"error": f"Gagal membaca PDF: {e}"}
 
-        # Jalur Cepat 1: Resolusi DOI otomatis via CrossRef (~0.3 detik) bila DOI terdeteksi
-        doi_val = doc_meta.get("doi") or doi_resolver.extract_doi(text[:3000])
-        resolved_source = None
-        if doi_val:
-            try:
-                doi_record = doi_resolver.fetch_doi_metadata(doi_val)
-                if doi_record and doi_record.get("title"):
-                    authors = [
-                        Author(
-                            family=a.get("family", ""),
-                            given=a.get("given", ""),
-                            is_org=a.get("is_org", False),
-                            abbrev=a.get("abbrev", ""),
-                        )
-                        for a in doi_record.get("authors", [])
-                    ]
-                    resolved_source = Source(
-                        authors=authors,
-                        year=doi_record.get("year", ""),
-                        title=doi_record.get("title", ""),
-                        container=doi_record.get("container", ""),
-                        doi=doi_record.get("doi", doi_val),
-                        url=doi_record.get("url", ""),
-                    )
-            except Exception as exc:
-                log.info(f"Resolusi cepat DOI dilewati ({exc}), beralih ke ekstraksi metadata dokumen.")
-
-        # Pengalaman unggah harus secepat unggah ke cloud: sumber langsung
-        # dipakai dengan metadata dokumen apa adanya (judul fallback = nama
-        # berkas); ekstraksi bibliografi AI berat dijalankan di latar dan
-        # hasilnya dikirim lewat event `source_metadata_ready`.
-        if resolved_source and resolved_source.title:
-            merged = resolved_source
-            needs_enrichment = not merged.authors
+        # Unggah harus secepat unggah ke cloud: sumber langsung dipakai dengan
+        # metadata dokumen/DOI cepat; bibliografi AI diekstrak di latar
+        # (event `source_metadata_ready`). Kebijakannya ada di sources.intake.
+        resolved = intake.fast_doi_source(doc_meta, text[:3000])
+        if resolved is not None:
+            merged = resolved
         else:
-            merged = bibliography.merge_metadata(Source([], "", ""), doc_meta)
-            needs_enrichment = True
+            merged = intake.merge_metadata(Source([], "", ""), doc_meta)
+        merged = intake.ensure_title(merged, pdf_path.stem)
 
-        if not merged.title:
-            merged = Source(merged.authors, merged.year, pdf_path.stem, merged.container, merged.doi, merged.url)
-
-        record = source_to_record(merged, text, "pdf")
-        record["ref"] = f"pdf-{datetime.now().strftime('%H%M%S%f')}-{len(text)}"
-        if needs_enrichment:
+        record = intake.make_record(merged, text, "pdf")
+        if intake.needs_enrichment(merged):
             self._start_metadata_enrichment(record["ref"], text)
         return {"success": True, "record": record}
 
@@ -731,13 +700,12 @@ class ApiBridge:
 
         # Metadata halaman dipakai seketika; bibliografi AI diperkaya di latar
         # (event source_metadata_ready) supaya menambah sumber terasa instan.
-        merged = bibliography.merge_metadata(Source([], "", ""), meta)
-        if not merged.title:
-            merged = Source(merged.authors, merged.year, url, merged.container, merged.doi, merged.url)
-
-        record = source_to_record(merged, text, "web")
-        record["ref"] = f"web-{datetime.now().strftime('%H%M%S%f')}-{len(text)}"
-        self._start_metadata_enrichment(record["ref"], text)
+        merged = intake.ensure_title(
+            intake.merge_metadata(Source([], "", ""), meta), url
+        )
+        record = intake.make_record(merged, text, "web")
+        if intake.needs_enrichment(merged):
+            self._start_metadata_enrichment(record["ref"], text)
         return {"success": True, "record": record}
 
     def add_manual_source(self, text: str) -> dict[str, Any]:
@@ -745,43 +713,16 @@ class ApiBridge:
         if not text:
             return {"error": "Teks sumber tidak boleh kosong."}
 
-        # Jalur cepat DOI jika teks manual memuat DOI
-        doi_val = doi_resolver.extract_doi(text[:2000])
-        resolved_source = None
-        if doi_val:
-            try:
-                doi_record = doi_resolver.fetch_doi_metadata(doi_val)
-                if doi_record and doi_record.get("title"):
-                    authors = [
-                        Author(
-                            family=a.get("family", ""),
-                            given=a.get("given", ""),
-                            is_org=a.get("is_org", False),
-                            abbrev=a.get("abbrev", ""),
-                        )
-                        for a in doi_record.get("authors", [])
-                    ]
-                    resolved_source = Source(
-                        authors=authors,
-                        year=doi_record.get("year", ""),
-                        title=doi_record.get("title", ""),
-                        container=doi_record.get("container", ""),
-                        doi=doi_record.get("doi", doi_val),
-                        url=doi_record.get("url", ""),
-                    )
-            except Exception as exc:
-                log.info(f"Resolusi cepat DOI pada teks manual dilewati: {exc}")
-
-        if resolved_source and resolved_source.title:
-            merged = resolved_source
-            needs_enrichment = False
+        # Jalur cepat DOI bila teks manual memuat DOI; sisanya diperkaya AI
+        # di latar. Kebijakan identik dengan PDF/web via sources.intake.
+        resolved = intake.fast_doi_source({}, text[:2000])
+        if resolved is not None:
+            merged = resolved
         else:
             merged = Source([], "", "Teks Manual")
-            needs_enrichment = True
 
-        record = source_to_record(merged, text, "manual")
-        record["ref"] = f"manual-{datetime.now().strftime('%H%M%S%f')}-{len(text)}"
-        if needs_enrichment:
+        record = intake.make_record(merged, text, "manual")
+        if intake.needs_enrichment(merged):
             self._start_metadata_enrichment(record["ref"], text)
         return {"success": True, "record": record}
 
