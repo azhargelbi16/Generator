@@ -277,6 +277,13 @@ export const api = {
   // Review
   verifyDocument: (sections: Section[], sources: SourceRecord[]) =>
     callApi<SentenceStatus[]>('verify_document', sections, sources),
+  /** Satu panggilan: status + sitasi + analitik sekaligus (dipakai layar review). */
+  getReviewedSnapshot: (sections: Section[], sources: SourceRecord[], style?: string) =>
+    callApi<{
+      statuses: SentenceStatus[];
+      citations: { labels: Record<string, string>; label_forms: Record<string, [string, string]>; references: string[]; cited_ids: number[] };
+      analytics: DocumentAnalytics;
+    }>('get_reviewed_snapshot', sections, sources, style ?? 'et_al'),
   paraphraseSentence: (sentence: Sentence, sources: SourceRecord[]) =>
     callApi<{ success?: boolean; sentence?: Sentence; error?: string }>('paraphrase_sentence', sentence, sources),
   requestDosenReview: (sections: Section[], sources: SourceRecord[]) =>

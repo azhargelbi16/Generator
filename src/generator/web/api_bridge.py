@@ -27,6 +27,7 @@ from ..sources.records import (
     record_to_source,
     source_to_record,
 )
+from .. import reviewed
 from ..verification import verify_sections, STATUS_VERIFIED, STATUS_NEEDS_REVIEW, STATUS_UNVERIFIED, STATUS_NON_FACTUAL
 
 log = logging.getLogger("generator.web.api")
@@ -927,100 +928,18 @@ class ApiBridge:
         }
 
     def save_active_draft(self, state: dict[str, Any]) -> dict[str, Any]:
-        existing = drafts.load_draft(DRAFT_ACTIVE_ID)
-        # Autosave Studio mengirim payload parsial (fields/sources tanpa
-        # "sections"/"done"). Saat berkas draf belum ada (mis. baru saja
-        # "Mulai Lembar Kerja Kosong Baru"), `existing` adalah None — cabang
-        # penggabungan tidak boleh mengaksesnya (bug AttributeError yang
-        # membuat autosave gagal berulang kali pada draf kosong).
-        incoming_sections = state.get("sections")
-        if incoming_sections is None or (len(incoming_sections) == 0 and existing and existing.sections and not state.get("clear_sections")):
-            sections_to_save = list(existing.sections) if existing else []
-        else:
-            sections_to_save = incoming_sections or []
-
-        incoming_done = state.get("done")
-        if incoming_done is None or (len(incoming_done) == 0 and existing and existing.done and not state.get("clear_sections")):
-            done_to_save = list(existing.done) if existing else []
-        else:
-            done_to_save = list(incoming_done)
-
-        # Tab Review menyimpan tanpa "fields"; gabung per-kunci agar JUDUL/DOSEN
-        # yang sudah ada tidak hilang karena payload parsial.
-        incoming_fields = state.get("fields")
-        fields_to_save = dict(existing.fields) if existing and existing.fields else {}
-        if isinstance(incoming_fields, dict):
-            fields_to_save.update(incoming_fields)
-
-        # Tab Review tidak mengelola sumber (payload tanpa "fields"); daftar
-        # sumber kosong dari penyimpan semacam itu tidak boleh menghapus yang ada.
-        incoming_sources = state.get("sources")
-        if incoming_sources is None or ("fields" not in state and not incoming_sources):
-            sources_to_save = list(existing.sources) if existing else []
-        else:
-            sources_to_save = list(incoming_sources)
-
-        draft_state = drafts.DraftState(
-            draft_id=DRAFT_ACTIVE_ID,
-            fields=fields_to_save,
-            sources=sources_to_save,
-            sections=sections_to_save,
-            done=done_to_save,
-        )
-        drafts.save_draft(draft_state)
+        # Kebijakan merge/preserve/clear draf aktif dimiliki drafts.py
+        # (lihat drafts.reconcile_draft) dan diuji langsung di sana; adapter
+        # ini hanya menerjemahkan panggilan pywebview.
+        drafts.reconcile_draft(DRAFT_ACTIVE_ID, state)
         return {"success": True}
-
-    def _archive_reviewed_draft(self, existing: drafts.DraftState | None) -> None:
-        """Arsipkan draf aktif yang punya kemajuan review sebelum ditimpa generasi.
-
-        Generasi (utuh maupun hasil batal) menyimpan `done=[]`; tanpa arsip,
-        status review yang sudah ditandai mahasiswa hilang diam-diam (F1).
-        Hanya draf yang benar-benar punya kemajuan review (tanda selesai atau
-        suntingan kalimat) yang diarsipkan — draf yang baru digenerate tanpa
-        disentuh tidak menumpuk arsip `arsip_pregen_` tiap regenerate.
-        """
-        if not existing:
-            return
-        has_review_progress = bool(existing.done) or any(
-            p.get("sentences") and any(s.get("origin") == "edit" for s in p["sentences"])
-            for sec in existing.sections
-            for p in sec.get("paragraphs", [])
-        )
-        if not has_review_progress:
-            return
-        judul = report.sanitize_filename(existing.fields.get("JUDUL") or "draf", max_len=30)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        archive = drafts.DraftState(
-            draft_id=f"arsip_pregen_{stamp}_{judul or 'draf'}",
-            fields=existing.fields,
-            sources=existing.sources,
-            sections=existing.sections,
-            done=existing.done,
-        )
-        try:
-            drafts.save_draft(archive)
-        except Exception:
-            log.exception("Gagal mengarsipkan draf sebelum digenerasi ulang")
 
     def clear_active_draft(self) -> dict[str, Any]:
         # Arsipkan draf aktif yang masih berisi sebelum dihapus, agar aliran
         # "Mulai Lembar Kerja Kosong Baru" tidak memusnahkan pekerjaan lama.
         existing = drafts.load_draft(DRAFT_ACTIVE_ID)
-        if existing:
-            sentence_count = sum(
-                len(p.get("sentences", [])) for sec in existing.sections for p in sec.get("paragraphs", [])
-            )
-            if sentence_count > 0 or existing.sources or (existing.fields.get("JUDUL") or "").strip():
-                judul = report.sanitize_filename(existing.fields.get("JUDUL") or "draf", max_len=30)
-                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                archive = drafts.DraftState(
-                    draft_id=f"arsip_{stamp}_{judul or 'draf'}",
-                    fields=existing.fields,
-                    sources=existing.sources,
-                    sections=existing.sections,
-                    done=existing.done,
-                )
-                drafts.save_draft(archive)
+        if existing and drafts.has_content(existing):
+            drafts.archive_draft(existing, prefix="arsip")
         drafts.delete_draft(DRAFT_ACTIVE_ID)
         return {"success": True}
 
@@ -1184,7 +1103,8 @@ class ApiBridge:
                 draft_fields["JUDUL"] = topic
                 draft_fields["VARIANT"] = variant_code
                 draft_fields["OUTLINE"] = outline
-                self._archive_reviewed_draft(active_draft)
+                if active_draft and drafts.has_review_progress(active_draft):
+                    drafts.archive_draft(active_draft, prefix="arsip_pregen")
                 drafts.save_draft(drafts.DraftState(
                     draft_id=DRAFT_ACTIVE_ID,
                     fields=draft_fields,
@@ -1214,7 +1134,6 @@ class ApiBridge:
     # =========================================================================
 
     def verify_document(self, sections_dicts: list[dict], sources_data: list[dict]) -> list[dict]:
-        sections = report.sections_from_dicts(sections_dicts)
         if not sources_data:
             # Tanpa sumber, semua kalimat faktual otomatis gagal verifikasi.
             # Jatuhkan ke sumber tersimpan pada draf aktif agar status tetap
@@ -1222,19 +1141,7 @@ class ApiBridge:
             draft = drafts.load_draft(DRAFT_ACTIVE_ID)
             if draft and draft.sources:
                 sources_data = draft.sources
-        texts = [s.get("text", "") for s in sources_data]
-        statuses = verify_sections(sections, texts)
-        return [
-            {
-                "index": st.index,
-                "uid": st.sentence.uid,
-                "status": st.status,
-                "reason": getattr(st, "reason", ""),
-                "is_factual": st.sentence.is_factual,
-                "source_ids": st.sentence.source_ids,
-            }
-            for st in statuses
-        ]
+        return reviewed.ReviewedDocument.from_payload(sections_dicts, sources_data).status_payload()
 
     def mark_non_factual_done(self, sections_dicts: list[dict], current_done: list[str]) -> dict[str, Any]:
         sections = report.sections_from_dicts(sections_dicts)
@@ -1286,78 +1193,21 @@ class ApiBridge:
     def compute_citations_and_references(
         self, sources_data: list[dict], sections_dicts: list[dict], style: str = "et_al"
     ) -> dict[str, Any]:
-        sources = [record_to_source(s) for s in sources_data]
-        sections = report.sections_from_dicts(sections_dicts)
-        cited = {i for sec in sections for p in sec.paragraphs for s in p.sentences if s.citation for i in s.source_ids}
-        labels = report.labels_for(sources, cited, style=style)
-        label_forms = report.label_forms_for(sources, cited, style=style)
-        refs = report.references_for(sources, cited)
+        return reviewed.ReviewedDocument.from_payload(sections_dicts, sources_data).citation_payload(style)
 
-        return {
-            "labels": {str(k): v for k, v in labels.items()},
-            "label_forms": {str(k): v for k, v in label_forms.items()},
-            "references": refs,
-            "cited_ids": list(cited),
-        }
-
+    def get_reviewed_snapshot(
+        self, sections_dicts: list[dict], sources_data: list[dict], style: str | None = None
+    ) -> dict[str, Any]:
+        """Satu panggilan untuk layar review & sidebar: status kalimat, label
+        sitasi, daftar pustaka, dan analitik — tanpa tiga round-trip terpisah."""
+        doc = reviewed.ReviewedDocument.from_payload(sections_dicts, sources_data)
+        return doc.snapshot(style or self._cfg.citation_style)
 
     def get_document_analytics(
         self, sections_dicts: list[dict], sources_data: list[dict]
     ) -> dict[str, Any]:
         """Hitung metrik kualitas dokumen dan analitik mendalam standar akademik SaaS."""
-        sections = report.sections_from_dicts(sections_dicts)
-        total_words = 0
-        total_chars = 0
-        total_sentences = 0
-        total_paragraphs = 0
-        factual_sentences = 0
-        cited_factual_sentences = 0
-        section_distribution = []
-
-        for sec in sections:
-            sec_words = 0
-            for p in sec.paragraphs:
-                total_paragraphs += 1
-                for s in p.sentences:
-                    total_sentences += 1
-                    words = s.text.split()
-                    w_count = len(words)
-                    total_words += w_count
-                    total_chars += len(s.text)
-                    sec_words += w_count
-                    if s.is_factual:
-                        factual_sentences += 1
-                        if s.citation and s.source_ids:
-                            cited_factual_sentences += 1
-            section_distribution.append({
-                "title": sec.title,
-                "words": sec_words,
-            })
-
-        reading_time_minutes = max(1, round(total_words / 200)) if total_words > 0 else 0
-        coverage_pct = round((cited_factual_sentences / max(1, factual_sentences)) * 100) if factual_sentences > 0 else 100
-
-        # Skor Kematangan Akademik (0-100)
-        structure_score = min(30, len(sections) * 7.5)
-        length_score = min(30, (total_words / 1500) * 30)
-        citation_score = (coverage_pct / 100) * 40
-        academic_score = min(100, round(structure_score + length_score + citation_score))
-
-        # Skor Keterbacaan (Indonesian Reading Ease Adaptation)
-        avg_sentence_len = (total_words / max(1, total_sentences))
-        readability = max(10, min(100, round(100 - (avg_sentence_len * 1.8))))
-
-        return {
-            "total_words": total_words,
-            "total_chars": total_chars,
-            "total_sentences": total_sentences,
-            "total_paragraphs": total_paragraphs,
-            "reading_time_minutes": reading_time_minutes,
-            "citation_coverage_pct": coverage_pct,
-            "academic_score": academic_score,
-            "readability_score": readability,
-            "section_distribution": section_distribution,
-        }
+        return reviewed.ReviewedDocument.from_payload(sections_dicts, sources_data).analytics()
 
     def open_output_folder(self) -> dict[str, Any]:
         """Buka folder keluaran dokumen DOCX di Windows Explorer."""
@@ -1379,36 +1229,32 @@ class ApiBridge:
         done = set(state.get("done", []))
         fields = state.get("fields", {})
 
-        sources = [record_to_source(s) for s in sources_data]
-        texts = [s.get("text", "") for s in sources_data]
-        sections = report.sections_from_dicts(sections_dicts)
-        statuses = verify_sections(sections, texts)
-
+        doc = reviewed.ReviewedDocument.from_payload(sections_dicts, sources_data)
         judul = fields.get("JUDUL", "Laporan")
         logo_path = Path(fields.get("LOGO_PATH")) if fields.get("LOGO_PATH") else None
-        cited = {i for sec in sections for p in sec.paragraphs for s in p.sentences if s.citation for i in s.source_ids}
+        cited = doc.cited_ids
         style = self._cfg.citation_style
         done_set = frozenset(done)
 
         checks = preflight.run_checks(
             judul=judul,
-            sources=sources,
-            statuses=statuses,
+            sources=doc.sources,
+            statuses=doc.statuses,
             cited=cited,
             logo_path=logo_path,
             style=style,
             done=done_set,
-            sections=sections,
+            sections=doc.sections,
         )
         issues = preflight.find_issues(
             judul=judul,
-            sources=sources,
-            statuses=statuses,
+            sources=doc.sources,
+            statuses=doc.statuses,
             cited=cited,
             logo_path=logo_path,
             style=style,
             done=done_set,
-            sections=sections,
+            sections=doc.sections,
         )
 
         return {
@@ -1442,13 +1288,12 @@ class ApiBridge:
         if not tpl or not Path(tpl.path).is_file():
             return {"error": "Template DOCX tidak ditemukan."}
 
-        sources = [record_to_source(s) for s in sources_data]
-        sections = report.sections_from_dicts(sections_dicts)
-        cited = {i for sec in sections for p in sec.paragraphs for s in p.sentences if s.citation for i in s.source_ids}
+        doc = reviewed.ReviewedDocument.from_payload(sections_dicts, sources_data)
+        cited = doc.cited_ids
 
-        labels = report.labels_for(sources, cited, style=style)
-        label_forms = report.label_forms_for(sources, cited, style=style)
-        refs = report.references_for(sources, cited)
+        labels = report.labels_for(doc.sources, cited, style=style)
+        label_forms = report.label_forms_for(doc.sources, cited, style=style)
+        refs = report.references_for(doc.sources, cited)
 
         normalized_fields = dict(fields)
         for k, v in list(fields.items()):
@@ -1489,7 +1334,7 @@ class ApiBridge:
             final_path = renderer.render_report(
                 template_path=Path(tpl.path),
                 fields=normalized_fields,
-                sections=sections,
+                sections=doc.sections,
                 references=refs,
                 logo_path=Path(logo_path) if logo_path else None,
                 output_path=out_path,

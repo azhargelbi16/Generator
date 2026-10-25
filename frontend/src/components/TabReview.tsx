@@ -31,6 +31,7 @@ import {
   DocumentAnalytics
 } from '../lib/api';
 import { toast } from '../lib/toast';
+import { normalizeReviewSections } from '../lib/reviewSections';
 
 interface TabReviewProps {
   onExportSuccess: (path: string) => void;
@@ -54,46 +55,6 @@ const describePreflightIssues = (
     .map((issue) => ISSUE_LABELS[issue.kind] || `${issue.message},`)
     .slice(0, 4);
   return parts.length > 0 ? parts.join(' ') : 'temuan yang perlu diperhatikan.';
-};
-
-const normalizeReviewSections = (value: unknown): Section[] => {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((rawSection, sectionIndex) => {
-    if (!rawSection || typeof rawSection !== 'object') return [];
-    const section = rawSection as Record<string, unknown>;
-    const rawParagraphs = Array.isArray(section.paragraphs) ? section.paragraphs : [];
-    const paragraphs = rawParagraphs.map((rawParagraph) => {
-      const paragraph = rawParagraph && typeof rawParagraph === 'object'
-        ? rawParagraph as Record<string, unknown>
-        : {};
-      const rawSentences = Array.isArray(paragraph.sentences) ? paragraph.sentences : [];
-      const sentences: Sentence[] = rawSentences.flatMap((rawSentence, sentenceIndex) => {
-        if (!rawSentence || typeof rawSentence !== 'object') return [];
-        const sentence = rawSentence as Record<string, unknown>;
-        const text = String(sentence.text ?? '').trim();
-        if (!text) return [];
-        return [{
-          uid: String(sentence.uid || `review-${sectionIndex}-${sentenceIndex}`),
-          text,
-          quote: String(sentence.quote ?? ''),
-          source_ids: Array.isArray(sentence.source_ids)
-            ? sentence.source_ids.filter((id): id is number => Number.isInteger(id))
-            : [],
-          is_factual: sentence.is_factual !== false,
-          origin: typeof sentence.origin === 'string' ? sentence.origin : undefined,
-          citation: sentence.citation !== false,
-        }];
-      });
-      return { sentences };
-    });
-
-    return [{
-      level: Number.isFinite(Number(section.level)) ? Number(section.level) : 1,
-      title: String(section.title ?? '').trim(),
-      paragraphs,
-    }];
-  });
 };
 
 export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive = false }) => {
@@ -188,19 +149,14 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
         const done = new Set(draft.done || []);
         setDoneUids(done);
 
-        // Seamless Concurrent Handshake: Run verification, citations & analytics in parallel (Zero-Lag)
-        const [verifiedStatuses, cit, stats] = await Promise.all([
-          api.verifyDocument(normalizedSections, s),
-          api.computeCitations(s, normalizedSections, 'et_al'),
-          api.getDocumentAnalytics(normalizedSections, s).catch((err) => {
-            console.warn('Gagal memuat analitik:', err);
-            return null;
-          }),
-        ]);
-
-        if (verifiedStatuses) setStatuses(verifiedStatuses);
-        if (cit) setCitations({ labels: cit.labels, references: cit.references });
-        if (stats) setAnalytics(stats);
+        // Satu panggilan snapshot (verifikasi + sitasi + analitik digabung di
+        // backend); operasi terpisah tetap ada untuk kompatibilitas.
+        const snap = await api.getReviewedSnapshot(normalizedSections, s, 'et_al');
+        if (snap) {
+          setStatuses(snap.statuses || []);
+          setCitations({ labels: snap.citations?.labels || {}, references: snap.citations?.references || [] });
+          setAnalytics(snap.analytics || null);
+        }
       } else {
         setSections([]);
         setSources([]);
