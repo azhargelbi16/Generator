@@ -18,6 +18,7 @@ from .ai import content
 from .ai.citation import Source, order_and_label
 from .ai.content import Paragraph, Section, Sentence
 from .verification import STATUS_NON_FACTUAL, STATUS_VERIFIED, SentenceStatus
+from .textutil import sanitize_filename  # re-export: kini utilitas umum textutil
 
 _BULAN_INDONESIA = (
     "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -30,31 +31,6 @@ def format_tanggal(d: date | None = None) -> str:
     if d is None:
         d = date.today()
     return f"{d.day} {_BULAN_INDONESIA[d.month - 1]} {d.year}"
-
-
-_ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*]')
-_CONTROL_FILENAME = re.compile(r"[\x00-\x1f\x7f]")
-_UNDERSCORE_RUN = re.compile(r"_+")
-_RESERVED_NAMES = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
-    | {f"COM{i}" for i in range(1, 10)}
-    | {f"LPT{i}" for i in range(1, 10)}
-)
-
-
-def sanitize_filename(judul: str, max_len: int = 80) -> str:
-    """Nama berkas aman untuk Windows: tanpa karakter ilegal atau kontrol, titik
-    diganti garis bawah ("4.0" -> "4_0"), spasi digarisbawahi, rapatkan garis
-    bawah, potong `max_len`, fallback "laporan" bila kosong."""
-    text = _CONTROL_FILENAME.sub("", judul)
-    text = _ILLEGAL_FILENAME.sub("", text)
-    text = text.replace(".", "_")
-    text = "_".join(text.split())
-    text = _UNDERSCORE_RUN.sub("_", text).strip("_")
-    text = text[:max_len] or "laporan"
-    if text.upper() in _RESERVED_NAMES:
-        text += "_"
-    return text
 
 
 def _extract_str(obj, key: str) -> str:

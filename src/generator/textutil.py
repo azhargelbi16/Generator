@@ -6,6 +6,8 @@ bersih; teks rusak berlapis dibiarkan apa adanya ketimbang ditebak.
 """
 from __future__ import annotations
 
+import re
+
 _SUSPECT = ("Ã", "Â", "â€")
 
 
@@ -31,3 +33,31 @@ def repair_mojibake(text: str) -> str:
     if not (0.5 * len(text) <= len(candidate) <= 2 * len(text)):
         return text
     return candidate
+
+# --- Nama berkas aman Windows (dipakai ekspor DOCX dan penamaan arsip draf) --
+
+_CONTROL_FILENAME = re.compile(r"[\x00-\x1f\x7f]")
+_ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*]')
+_UNDERSCORE_RUN = re.compile(r"_{2,}")
+
+
+def sanitize_filename(judul: str, max_len: int = 80) -> str:
+    """Nama berkas aman untuk Windows: tanpa karakter ilegal atau kontrol, titik
+    diganti garis bawah ("4.0" -> "4_0"), spasi digarisbawahi, rapatkan garis
+    bawah, potong `max_len`, fallback "laporan" bila kosong."""
+    text = _CONTROL_FILENAME.sub("", judul)
+    text = _ILLEGAL_FILENAME.sub("", text)
+    text = text.replace(".", "_")
+    text = "_".join(text.split())
+    text = _UNDERSCORE_RUN.sub("_", text).strip("_")
+    text = text[:max_len] or "laporan"
+    if text.upper() in _RESERVED_WIN_NAMES:
+        text += "_"
+    return text
+
+
+_RESERVED_WIN_NAMES = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)

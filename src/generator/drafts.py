@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import ctypes
 from ctypes import wintypes
+from datetime import datetime
 import json
 import logging
 import re
@@ -24,6 +25,7 @@ from pathlib import Path
 
 from . import paths
 from .atomic import write_text as write_text_atomic
+from .textutil import sanitize_filename
 
 log = logging.getLogger("generator.drafts")
 
@@ -198,3 +200,119 @@ def delete_draft(draft_id: str) -> None:
     path = _path(draft_id)
     if path.exists():
         path.unlink()
+
+
+# --- Rekonsiliasi draf: kebijakan merge/preserve/clear/archive terpusat ------
+#
+# Tab Laporan memiliki fields+sources; Tab Review memiliki sections+done.
+# Keduanya mengirim payload parsial ke draf yang sama, sehingga arti
+# "hilang/kosong" harus ditafsirkan di SATU tempat yang bisa diuji langsung
+# (dulu tersebar di ApiBridge.save_active_draft dan mudah salah tafsir).
+
+
+def _iter_sentences(state: DraftState):
+    for section in state.sections:
+        for paragraph in section.get("paragraphs", []) if isinstance(section, dict) else []:
+            for sentence in paragraph.get("sentences", []) or []:
+                yield sentence
+
+
+def has_content(state: DraftState) -> bool:
+    """True bila draf menyimpan sesuatu yang layak diarsipkan sebelum dihapus:
+    ada kalimat, sumber, atau judul."""
+    return bool(
+        any(_iter_sentences(state))
+        or state.sources
+        or (state.fields.get("JUDUL") or "").strip()
+    )
+
+
+def has_review_progress(state: DraftState) -> bool:
+    """True bila draf punya kemajuan review yang akan hilang bila ditimpa
+    hasil generasi baru: ada tanda selesai (done) atau kalimat hasil suntingan
+    manual (origin "edit"). Draf yang baru digenerate tanpa disentuh tidak
+    dihitung — regenerate tidak menumpuk arsip."""
+    if state.done:
+        return True
+    return any(sentence.get("origin") == "edit" for sentence in _iter_sentences(state))
+
+
+def archive_draft(state: DraftState, *, prefix: str) -> Path | None:
+    """Simpan salinan draf sebagai arsip bertanda waktu `arsip_{prefix}_…`.
+
+    Nama arsip memakai judul laporan (dibersihkan, maks 30 karakter) agar
+    mudah dikenali di folder draf. Kembalikan path arsip.
+    """
+    judul = sanitize_filename(state.fields.get("JUDUL") or "draf", max_len=30)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    archive = DraftState(
+        draft_id=f"{prefix}_{stamp}_{judul or 'draf'}",
+        fields=dict(state.fields),
+        sources=list(state.sources),
+        sections=list(state.sections),
+        done=list(state.done),
+    )
+    return save_draft(archive)
+
+
+def reconcile_draft(draft_id: str, incoming: dict) -> DraftState:
+    """Gabungkan payload parsial `incoming` ke draf tersimpan lalu simpan.
+
+    Kebijakan (dipertahankan persis agar draf JSON lama dan perilaku UI
+    tidak berubah):
+
+    - ``sections`` hilang → pertahankan; ada → pakai apa adanya; kosong
+      TANPA kunci ``clear_sections`` → pertahankan yang tersimpan; kosong
+      DENGAN ``clear_sections`` → benar-benar dibersihkan.
+    - ``done`` → kebijakan sama dengan ``sections``.
+    - ``fields`` → dict digabung per-kunci di atas yang tersimpan; kunci
+      lain di payload tidak menghapus apa pun.
+    - ``sources`` hilang → pertahankan; ada → pakai apa adanya; kosong
+      dan payload TIDAK membawa ``fields`` → pertahankan (pola payload
+      Tab Review yang tidak mengelola sumber); kosong dengan ``fields``
+      → dibersihkan (payload Studio berhak menghapus sumber eksplisit).
+    """
+    existing = load_draft(draft_id)
+
+    incoming_sections = incoming.get("sections")
+    if incoming_sections is None or (
+        len(incoming_sections) == 0
+        and existing
+        and existing.sections
+        and not incoming.get("clear_sections")
+    ):
+        sections = list(existing.sections) if existing else []
+    else:
+        sections = incoming_sections or []
+
+    incoming_done = incoming.get("done")
+    if incoming_done is None or (
+        len(incoming_done) == 0
+        and existing
+        and existing.done
+        and not incoming.get("clear_sections")
+    ):
+        done = list(existing.done) if existing else []
+    else:
+        done = list(incoming_done)
+
+    fields = dict(existing.fields) if existing and existing.fields else {}
+    incoming_fields = incoming.get("fields")
+    if isinstance(incoming_fields, dict):
+        fields.update(incoming_fields)
+
+    incoming_sources = incoming.get("sources")
+    if incoming_sources is None or ("fields" not in incoming and not incoming_sources):
+        sources = list(existing.sources) if existing else []
+    else:
+        sources = list(incoming_sources)
+
+    merged = DraftState(
+        draft_id=draft_id,
+        fields=fields,
+        sources=sources,
+        sections=sections,
+        done=done,
+    )
+    save_draft(merged)
+    return merged

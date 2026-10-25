@@ -125,3 +125,167 @@ def test_fallback_polos_bila_dpapi_tidak_tersedia(tmp_path, monkeypatch, caplog)
     loaded = drafts.load_draft("d_fallback")
     assert loaded is not None
     assert loaded.fields["judul"] == "Draf Fallback"
+
+
+# --- Rekonsiliasi draf aktif: kebijakan merge/preserve/clear/archive --------
+
+
+def _section_dict(text: str, uid: str = "uid-1", origin: str | None = None):
+    sentence = {"uid": uid, "text": text, "quote": text, "source_ids": [0],
+                "is_factual": True, "citation": True}
+    if origin:
+        sentence["origin"] = origin
+    return {
+        "level": 2,
+        "title": "1.1 Latar Belakang",
+        "paragraphs": [{"sentences": [sentence]}],
+    }
+
+
+def _source_record(title: str = "Jurnal Uji"):
+    return {"kind": "pdf", "title": title, "year": "2025", "container": "",
+            "doi": "", "url": "", "authors": [], "text": "Teks sumber " + title}
+
+
+def test_reconcile_payload_review_pertahankan_fields_dan_sources(tmp_path, monkeypatch):
+    """Payload Tab Review (sections+done tanpa fields) tidak boleh menghapus
+    fields/sumber milik Tab Laporan."""
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    drafts.reconcile_draft("aktif", {
+        "fields": {"JUDUL": "Laporan Uji", "DOSEN": "Dr. Uji"},
+        "sources": [_source_record()],
+        "sections": [_section_dict("Kalimat pertama.")],
+        "done": [],
+    })
+
+    merged = drafts.reconcile_draft("aktif", {
+        "sections": [_section_dict("Kalimat disunting.", "uid-1", origin="edit")],
+        "sources": [],
+        "done": ["uid-1"],
+    })
+    assert merged.fields["JUDUL"] == "Laporan Uji"
+    assert merged.fields["DOSEN"] == "Dr. Uji"
+    assert len(merged.sources) == 1
+    assert merged.done == ["uid-1"]
+    assert "disunting" in merged.sections[0]["paragraphs"][0]["sentences"][0]["text"]
+
+
+def test_reconcile_payload_report_pertahankan_sections_dan_done(tmp_path, monkeypatch):
+    """Payload Tab Laporan (fields+sources tanpa sections/done) tidak boleh
+    menghapus isi dokumen dan tanda review milik Tab Review."""
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    drafts.reconcile_draft("aktif", {
+        "sections": [_section_dict("Bab utuh dari review.")],
+        "done": ["uid-9"],
+    })
+
+    merged = drafts.reconcile_draft("aktif", {
+        "fields": {"JUDUL": "Judul Baru"},
+        "sources": [_source_record("Jurnal Kedua")],
+    })
+    assert "Bab utuh dari review." in merged.sections[0]["paragraphs"][0]["sentences"][0]["text"]
+    assert merged.done == ["uid-9"]
+    assert merged.fields["JUDUL"] == "Judul Baru"
+    assert len(merged.sources) == 1
+
+
+def test_reconcile_draf_baru_belum_ada_berkas(tmp_path, monkeypatch):
+    """Payload parsial pada draf yang belum pernah ada membuat draf dengan
+    nilai bawaan kosong, bukan crash (regresi AttributeError produksi)."""
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    merged = drafts.reconcile_draft("aktif", {
+        "fields": {"JUDUL": "Draf Baru"},
+        "sources": [_source_record()],
+    })
+    assert merged.fields["JUDUL"] == "Draf Baru"
+    assert merged.sections == []
+    assert merged.done == []
+    assert len(merged.sources) == 1
+
+    assert drafts.reconcile_draft("aktif", {}).sections == []
+
+
+def test_reconcile_sumber_kosong_eksplisit_dengan_fields_menghapus(tmp_path, monkeypatch):
+    """Payload Studio yang membawa fields + sources:[] berhak menghapus sumber;
+    payload tanpa fields (pola Tab Review) tetap mempertahankan."""
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    drafts.reconcile_draft("aktif", {
+        "fields": {"JUDUL": "Ada Sumber"},
+        "sources": [_source_record()],
+    })
+
+    # Tanpa fields: sumber kosong dipertahankan
+    merged = drafts.reconcile_draft("aktif", {"sources": []})
+    assert len(merged.sources) == 1
+
+    # Dengan fields: sumber kosong berarti hapus eksplisit
+    merged = drafts.reconcile_draft("aktif", {"fields": {"JUDUL": "Tanpa Sumber"}, "sources": []})
+    assert merged.sources == []
+
+
+def test_reconcile_clear_sections_mengosongkan_bagian_dan_done(tmp_path, monkeypatch):
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    drafts.reconcile_draft("aktif", {
+        "sections": [_section_dict("Isi awal.")],
+        "done": ["uid-1"],
+    })
+
+    merged = drafts.reconcile_draft("aktif", {"sections": [], "done": [], "clear_sections": True})
+    assert merged.sections == []
+    assert merged.done == []
+
+    # Tanpa clear_sections: sections kosong justru dipertahankan yang tersimpan
+    drafts.reconcile_draft("aktif", {"sections": [_section_dict("Isi kedua.")]})
+    merged = drafts.reconcile_draft("aktif", {"sections": []})
+    assert "Isi kedua." in merged.sections[0]["paragraphs"][0]["sentences"][0]["text"]
+
+
+def test_reconcile_fields_gabung_per_kunci(tmp_path, monkeypatch):
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    drafts.reconcile_draft("aktif", {"fields": {"JUDUL": "Judul", "DOSEN": "Dosen A"}})
+    merged = drafts.reconcile_draft("aktif", {"fields": {"DOSEN": "Dosen B"}})
+    assert merged.fields["JUDUL"] == "Judul"
+    assert merged.fields["DOSEN"] == "Dosen B"
+
+
+def test_has_content_dan_has_review_progress(tmp_path, monkeypatch):
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    kosong = drafts.DraftState("aktif", {}, [], [])
+    assert drafts.has_content(kosong) is False
+    assert drafts.has_review_progress(kosong) is False
+
+    judul_saja = drafts.DraftState("aktif", {"JUDUL": "Judul"}, [], [])
+    assert drafts.has_content(judul_saja) is True
+    assert drafts.has_review_progress(judul_saja) is False
+
+    ditandai = drafts.DraftState("aktif", {}, [], [_section_dict("Isi.")], done=["uid-1"])
+    assert drafts.has_review_progress(ditandai) is True
+
+    disunting = drafts.DraftState("aktif", {}, [], [_section_dict("Isi.", origin="edit")])
+    assert drafts.has_review_progress(disunting) is True
+
+    baru_generate = drafts.DraftState("aktif", {}, [], [_section_dict("Isi.")])
+    assert drafts.has_review_progress(baru_generate) is False
+
+
+def test_archive_draft_membuat_salinan_bertanda_waktu(tmp_path, monkeypatch):
+    monkeypatch.setattr(drafts.paths, "DRAFTS_DIR", tmp_path)
+    asal = drafts.DraftState(
+        "aktif",
+        {"JUDUL": "Pengaruh Biochar terhadap Tanah"},
+        [_source_record()],
+        [_section_dict("Isi terarsip.")],
+        done=["uid-1"],
+    )
+    drafts.save_draft(asal)
+    path = drafts.archive_draft(asal, prefix="arsip_pregen")
+
+    assert path is not None and path.is_file()
+    assert path.name.startswith("arsip_pregen_")
+    assert "Pengaruh_Biochar" in path.name
+    salinan = drafts.load_draft(path.stem)
+    assert salinan.fields["JUDUL"] == "Pengaruh Biochar terhadap Tanah"
+    assert salinan.done == ["uid-1"]
+    assert salinan.draft_id == path.stem
+    # Draf asli tetap utuh di tempatnya
+    assert drafts.load_draft("aktif") is not None
