@@ -7,7 +7,6 @@ Aplikasi desktop untuk menyusun laporan akademik berbahasa Indonesia dari sumber
 1. Pastikan Python 3.11 atau 3.12 terpasang di komputer Anda.
 2. Jalankan aplikasi:
    - **Windows**: Klik dua kali `run.bat`.
-   - **Linux / macOS**: Jalankan `./run.sh` di terminal.
    Skrip otomatis membuat virtual environment `.venv` saat pertama kali dijalankan, memasang semua paket dari `requirements.txt`, lalu membuka jendela aplikasi desktop modern (antarmuka telah dikompilasi siap pakai di `frontend/dist/`).
 3. Cara manual bila diperlukan:
 
