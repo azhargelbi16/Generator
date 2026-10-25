@@ -145,22 +145,22 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
     "pick_pdf_source": {
         "description": "Membaca file PDF dan mengekstrak teks serta metadata",
         "params": [],
-        "returns": "{ success: boolean, source?: SourceRecord, error?: string }",
+        "returns": "{ success: boolean, record?: SourceRecord, error?: string }",
     },
     "add_web_source": {
         "description": "Mengunduh artikel web dari URL",
         "params": [{"name": "url", "type": "string"}],
-        "returns": "{ success: boolean, source?: SourceRecord, error?: string }",
+        "returns": "{ success: boolean, record?: SourceRecord, error?: string }",
     },
     "resolve_doi_source": {
         "description": "Mengambil metadata publikasi ilmiah via DOI",
         "params": [{"name": "doi", "type": "string"}],
-        "returns": "{ success: boolean, source?: SourceRecord, error?: string }",
+        "returns": "{ success: boolean, record?: SourceRecord, error?: string }",
     },
     "add_manual_source": {
-        "description": "Menambah catatan sumber manual",
-        "params": [{"name": "data", "type": "SourceRecord"}],
-        "returns": "{ success: boolean, source: SourceRecord }",
+        "description": "Menambah catatan sumber manual (teks mentah; DOI di dalam teks diresolusi cepat)",
+        "params": [{"name": "text", "type": "string"}],
+        "returns": "{ success: boolean, record?: SourceRecord, error?: string }",
     },
     # Generation & Report
     "get_format_variants": {
@@ -182,14 +182,11 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
         "returns": "{ success: boolean, title: string, error?: string }",
     },
     "start_generation": {
-        "description": "Memulai penulisan laporan secara streaming",
+        "description": "Memulai penulisan laporan secara streaming (thread latar; progres via event gen_*)",
         "params": [
-            {"name": "topic", "type": "string"},
-            {"name": "outline", "type": "string[]"},
-            {"name": "sources", "type": "SourceRecord[]"},
-            {"name": "variant", "type": "string", "optional": True},
+            {"name": "request_data", "type": "{ topic: string, outline: string[], sources: SourceRecord[], variant?: string }"},
         ],
-        "returns": "{ success: boolean, error?: string }",
+        "returns": "{ started: boolean } | { error: string }",
     },
     "cancel_generation": {
         "description": "Membatalkan proses penulisan laporan",
@@ -198,32 +195,36 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
     },
     "compute_citations_and_references": {
         "description": "Menghitung label sitasi in-text dan daftar pustaka APA 7",
-        "params": [{"name": "sources", "type": "SourceRecord[]"}],
-        "returns": "{ success: boolean, labels: Record<number, string>, references: string[] }",
+        "params": [
+            {"name": "sources_data", "type": "SourceRecord[]"},
+            {"name": "sections_dicts", "type": "Section[]"},
+            {"name": "style", "type": "string", "optional": True},
+        ],
+        "returns": "{ labels: Record<string, string>, label_forms: Record<string, [string, string]>, references: string[], cited_ids: number[] }",
     },
     "verify_document": {
         "description": "Memverifikasi klaim faktual tiap kalimat terhadap sumber",
         "params": [
-            {"name": "sources", "type": "SourceRecord[]"},
-            {"name": "sections", "type": "Section[]"},
+            {"name": "sections_dicts", "type": "Section[]"},
+            {"name": "sources_data", "type": "SourceRecord[]"},
         ],
-        "returns": "{ success: boolean, statuses: Record<string, SentenceStatus> }",
+        "returns": "Array<{ index: number, uid: string, status: string, reason: string, is_factual: boolean, source_ids: number[] }>",
     },
     "paraphrase_sentence": {
-        "description": "Memparafrase satu paragraf kalimat",
+        "description": "Memparafrase satu kalimat dengan menjaga sitasi",
         "params": [
-            {"name": "sources", "type": "SourceRecord[]"},
-            {"name": "paragraph", "type": "Paragraph"},
+            {"name": "sentence_dict", "type": "Sentence"},
+            {"name": "sources_data", "type": "SourceRecord[]"},
         ],
-        "returns": "{ success: boolean, paragraph: Paragraph, error?: string }",
+        "returns": "{ success: boolean, sentence?: Sentence, error?: string }",
     },
     "request_dosen_review": {
         "description": "Menjalankan evaluasi persona dosen pembimbing",
         "params": [
-            {"name": "topic", "type": "string"},
-            {"name": "sections", "type": "Section[]"},
+            {"name": "sections_dicts", "type": "Section[]"},
+            {"name": "sources_data", "type": "SourceRecord[]"},
         ],
-        "returns": "{ success: boolean, review: string, error?: string }",
+        "returns": "{ success: boolean, notes: DosenNote[], error?: string }",
     },
     "export_report": {
         "description": "Merender dan mengekspor dokumen DOCX",
@@ -233,26 +234,45 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
     "get_document_analytics": {
         "description": "Menganalisis statistik, readability, dan sebaran kata dokumen",
         "params": [
-            {"name": "sections", "type": "Section[]"},
-            {"name": "sources", "type": "SourceRecord[]"},
+            {"name": "sections_dicts", "type": "Section[]"},
+            {"name": "sources_data", "type": "SourceRecord[]"},
         ],
-        "returns": "{ success: boolean, analytics: DocumentAnalytics }",
+        "returns": "DocumentAnalytics",
     },
     "open_output_folder": {
         "description": "Membuka folder output di File Explorer",
         "params": [],
-        "returns": "{ success: boolean, path: string, error?: string }",
+        "returns": "{ success: boolean, error?: string }",
     },
     "run_preflight": {
         "description": "Memeriksa kesiapan data sebelum ekspor dokumen",
-        "params": [{"name": "data", "type": "object"}],
-        "returns": "{ success: boolean, passed: boolean, issues: string[] }",
+        "params": [
+            {"name": "state", "type": "{ sources: SourceRecord[], sections: Section[], done: string[], fields: Record<string, string> }"},
+        ],
+        "returns": "{ checks: PreflightCheck[], issues: PreflightIssue[], can_export_directly: boolean }",
+    },
+    "mark_non_factual_done": {
+        "description": "Tandai semua kalimat bukan-klaim faktual sebagai selesai",
+        "params": [
+            {"name": "sections_dicts", "type": "Section[]"},
+            {"name": "current_done", "type": "string[]"},
+        ],
+        "returns": "{ success: boolean, done: string[] }",
+    },
+    "get_reviewed_snapshot": {
+        "description": "Satu panggilan untuk layar review: status kalimat + sitasi + analitik",
+        "params": [
+            {"name": "sections_dicts", "type": "Section[]"},
+            {"name": "sources_data", "type": "SourceRecord[]"},
+            {"name": "style", "type": "string", "optional": True},
+        ],
+        "returns": "{ statuses: SentenceStatusPayload[], citations: CitationPayload, analytics: DocumentAnalytics }",
     },
     # Drafts
     "load_active_draft": {
         "description": "Memuat draf aktif terakhir",
         "params": [],
-        "returns": "DraftState | null",
+        "returns": "{ has_draft: boolean, draft_id?: string, fields: Record<string, string>, sources: SourceRecord[], sections: Section[], done: string[] }",
     },
     "save_active_draft": {
         "description": "Menyimpan autosave draf aktif",

@@ -5,8 +5,11 @@ export type { PyWebViewApiContract, ApiContractMetadata };
 
 declare global {
   interface Window {
+    // Sengaja TANPA escape hatch index-signature: satu-satunya jalur panggilan
+    // generik adalah callApi di bawah (dengan cast lokal), sehingga tanda
+    // tangan metode apa pun yang salah tertangkap TypeScript.
     pywebview?: {
-      api: PyWebViewApiContract & Record<string, (...args: any[]) => Promise<any>>;
+      api: PyWebViewApiContract;
     };
   }
 }
@@ -201,12 +204,19 @@ async function callApi<T = any>(method: string, ...args: any[]): Promise<T> {
   if (!window.pywebview?.api) {
     await waitForPywebview();
   }
-  if (window.pywebview?.api && typeof window.pywebview.api[method] === 'function') {
-    try {
-      return await window.pywebview.api[method](...args);
-    } catch (err) {
-      console.error(`[API Error] ${method}:`, err);
-      throw err;
+  const api = window.pywebview?.api;
+  if (api) {
+    // Satu-satunya cast generik di aplikasi: `method` selalu berasal dari
+    // pemanggil ber-tipe di atas (api.*), bukan dari input runtime.
+    const dispatch = api as unknown as Record<string, (...fnArgs: unknown[]) => Promise<unknown>>;
+    const fn = dispatch[method];
+    if (typeof fn === 'function') {
+      try {
+        return await fn(...args) as T;
+      } catch (err) {
+        console.error(`[API Error] ${method}:`, err);
+        throw err;
+      }
     }
   }
   console.warn(`[API Mock] ${method} called without pywebview bridge:`, args);
