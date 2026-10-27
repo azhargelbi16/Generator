@@ -30,7 +30,8 @@ import {
   MataKuliah, 
   Logo, 
   TemplateItem,
-  SavedDraftItem
+  SavedDraftItem,
+  Profile
 } from '../lib/api';
 import { toast } from '../lib/toast';
 
@@ -89,7 +90,8 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [selectedSourceIdx, setSelectedSourceIdx] = useState<number | null>(null);
 
-  // Entities & Dropdowns
+  // Profile & Entities
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [dosenList, setDosenList] = useState<Dosen[]>([]);
   const [matkulList, setMatkulList] = useState<MataKuliah[]>([]);
   const [logoList, setLogoList] = useState<Logo[]>([]);
@@ -305,43 +307,67 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     // mengosongkan SEMUA dropdown — dosen/matkul/logo/template tetap terisi
     // dan kegagalan yang ada dilaporkan eksplisit.
     try {
-      const [d, m, l, t, v, draft] = await Promise.all([
+      const [d, m, l, t, v, draft, prof] = await Promise.all([
         api.listDosen().catch((err) => { console.error('[listDosen]', err); return null; }),
         api.listMatkul().catch((err) => { console.error('[listMatkul]', err); return null; }),
         api.listLogos().catch((err) => { console.error('[listLogos]', err); return null; }),
         api.listTemplates().catch((err) => { console.error('[listTemplates]', err); return null; }),
         api.getFormatVariants().catch((err) => { console.error('[getFormatVariants]', err); return null; }),
         api.loadActiveDraft().catch((err) => { console.error('[loadActiveDraft]', err); return null; }),
+        api.getProfile().catch((err) => { console.error('[getProfile]', err); return null; }),
       ]);
 
-      if (Array.isArray(d) && d.length >= 0) setDosenList(d);
+      if (prof) setProfile(prof);
+      if (Array.isArray(d)) setDosenList(d);
       if (Array.isArray(m)) setMatkulList(m);
       if (Array.isArray(l)) setLogoList(l);
-      if (t) {
-        setTemplates(t);
-        setSelectedTemplateId((prev) => {
-          if (prev && t.some((item) => item.id === prev)) {
-            return prev;
-          }
-          const defaultItem = t.find((x) => x.is_default && x.status === 'lengkap');
-          if (defaultItem) return defaultItem.id;
-          const valid = t.find((x) => x.status === 'lengkap');
-          return valid ? valid.id : (t[0] ? t[0].id : null);
-        });
-      }
+      if (t) setTemplates(t);
       if (v) setVariants(v);
 
       const currentVar = (draft?.fields?.VARIANT || 'D').toUpperCase();
       const normalizedVar = ['A', 'B', 'C', 'D'].includes(currentVar) ? currentVar : (currentVar === 'BEBAS' ? 'bebas' : 'D');
       setSelectedVariant(normalizedVar);
 
+      // 1. Template: prioritize draft value, fallback to default/valid template in database
+      let finalTemplateId: number | null = null;
+      if (draft?.fields?.TEMPLATE_ID && t?.some((item) => item.id === Number(draft.fields.TEMPLATE_ID))) {
+        finalTemplateId = Number(draft.fields.TEMPLATE_ID);
+      } else if (Array.isArray(t) && t.length > 0) {
+        const defaultItem = t.find((x) => x.is_default && x.status === 'lengkap') || t.find((x) => x.status === 'lengkap') || t[0];
+        if (defaultItem) finalTemplateId = defaultItem.id;
+      }
+      setSelectedTemplateId(finalTemplateId);
+
+      // 2. Dosen: prioritize draft value if filled; otherwise auto-select first available from database
+      let finalDosen = '';
+      if (draft?.fields?.DOSEN && draft.fields.DOSEN.trim()) {
+        finalDosen = draft.fields.DOSEN;
+      } else if (Array.isArray(d) && d.length > 0) {
+        finalDosen = `${d[0].nama}${d[0].gelar ? ', ' + d[0].gelar : ''}`;
+      }
+      setSelectedDosen(finalDosen);
+
+      // 3. Mata Kuliah: prioritize draft value if filled; otherwise auto-select first available from database
+      let finalMatkul = '';
+      if (draft?.fields?.MATA_KULIAH && draft.fields.MATA_KULIAH.trim()) {
+        finalMatkul = draft.fields.MATA_KULIAH;
+      } else if (Array.isArray(m) && m.length > 0) {
+        finalMatkul = m[0].nama;
+      }
+      setSelectedMatkul(finalMatkul);
+
+      // 4. Logo: prioritize draft value if valid; otherwise auto-select first available from database
+      let finalLogo = '';
+      if (draft?.fields?.LOGO_PATH && l?.some((item) => item.path === draft.fields.LOGO_PATH)) {
+        finalLogo = draft.fields.LOGO_PATH;
+      } else if (Array.isArray(l) && l.length > 0) {
+        finalLogo = l[0].path;
+      }
+      setSelectedLogoPath(finalLogo);
+
       if (draft?.has_draft) {
         setTopic(draft.fields?.JUDUL || '');
         if (draft.sources) setSources(draft.sources);
-        if (draft.fields?.DOSEN) setSelectedDosen(draft.fields.DOSEN);
-        if (draft.fields?.MATA_KULIAH) setSelectedMatkul(draft.fields.MATA_KULIAH);
-        if (draft.fields?.LOGO_PATH) setSelectedLogoPath(draft.fields.LOGO_PATH);
-        if (draft.fields?.TEMPLATE_ID) setSelectedTemplateId(Number(draft.fields.TEMPLATE_ID));
 
         let activeOutline: string[] = [];
         if (draft.fields?.OUTLINE && Array.isArray(draft.fields.OUTLINE)) {
@@ -1035,18 +1061,33 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               </div>
             </div>
 
-            {/* Student Identity Summary Pill (Links to Tab 03 Profil & Data) */}
-            <div className="p-3.5 rounded-2xl bg-[#E4F9F8]/60 border border-teal-200/70 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-full bg-[#39C5BB] text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
+            {/* Student Identity Summary Card (Shows Real Data & Links to Tab 03 Profil & Data) */}
+            <div className="p-4 rounded-2xl bg-[#E4F9F8]/70 border border-teal-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center space-x-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-[#39C5BB] text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-xs">
                   🎓
                 </div>
-                <div className="text-xs">
-                  <span className="text-slate-500 block font-mono">IDENTITAS PENULIS LAPORAN:</span>
-                  <span className="font-extrabold text-slate-900">
-                    Data Mahasiswa & Dosen Tersinkronisasi
-                  </span>
-                  <span className="text-teal-800 font-mono"> (APA 7 Ready)</span>
+                <div className="min-w-0 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-bold text-teal-800 uppercase px-2 py-0.5 rounded-full bg-teal-100/80">
+                      IDENTITAS PENULIS LAPORAN (SAMPUL & HEADER DOCX)
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                      ✓ Tersinkronisasi
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+                    <span className="font-extrabold text-slate-900 text-sm truncate">
+                      {profile?.nama || 'Nama Belum Diisi'}
+                    </span>
+                    <span className="font-mono text-slate-600 text-xs">
+                      {profile?.nim ? `NIM: ${profile.nim}` : 'NIM: -'}
+                    </span>
+                    <span className="text-slate-400">•</span>
+                    <span className="text-slate-700 text-xs truncate">
+                      {[profile?.prodi, profile?.institusi].filter(Boolean).join(' — ') || 'Program Studi & Institusi'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <button
@@ -1054,9 +1095,9 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 onClick={() => {
                   window.dispatchEvent(new CustomEvent('switch-tab-request', { detail: { tab: 'data' } }));
                 }}
-                className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-[#219E95] border border-teal-200 hover:bg-[#E4F9F8] transition shadow-2xs shrink-0 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-[#219E95] border border-teal-200 hover:bg-[#E4F9F8] hover:border-teal-300 transition shadow-2xs shrink-0 cursor-pointer flex items-center gap-1.5 self-start sm:self-center"
               >
-                ✏️ Kelola di Tab Data
+                <span>✏️ Kelola di Tab Data</span>
               </button>
             </div>
 
@@ -1205,41 +1246,86 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               {/* Dosen & Matkul Selection */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                 <div>
-                  <label htmlFor="brief-dosen" className="block text-xs font-semibold text-slate-600 mb-1">Dosen Pengampu</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="brief-dosen" className="block text-xs font-semibold text-slate-600">Dosen Pengampu</label>
+                    {dosenList.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => window.dispatchEvent(new CustomEvent('switch-tab-request', { detail: { tab: 'data' } }))}
+                        className="text-[10px] text-teal-600 hover:underline"
+                      >
+                        + Tambah
+                      </button>
+                    )}
+                  </div>
                   <select
                     id="brief-dosen"
                     value={selectedDosen}
                     onChange={(e) => setSelectedDosen(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
                   >
-                    <option value="">-- Pilih Dosen --</option>
-                    {dosenList.map((d) => (
-                      <option key={d.id} value={`${d.nama}${d.gelar ? ', ' + d.gelar : ''}`}>
-                        {d.nama} {d.gelar}
-                      </option>
-                    ))}
+                    {dosenList.length === 0 ? (
+                      <option value="">-- Belum ada dosen (Atur di Tab 03) --</option>
+                    ) : (
+                      <>
+                        <option value="">-- Pilih Dosen Pengampu --</option>
+                        {dosenList.map((d) => (
+                          <option key={d.id} value={`${d.nama}${d.gelar ? ', ' + d.gelar : ''}`}>
+                            {d.nama} {d.gelar}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
 
                 <div>
-                  <label htmlFor="brief-matkul" className="block text-xs font-semibold text-slate-600 mb-1">Mata Kuliah</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="brief-matkul" className="block text-xs font-semibold text-slate-600">Mata Kuliah</label>
+                    {matkulList.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => window.dispatchEvent(new CustomEvent('switch-tab-request', { detail: { tab: 'data' } }))}
+                        className="text-[10px] text-teal-600 hover:underline"
+                      >
+                        + Tambah
+                      </button>
+                    )}
+                  </div>
                   <select
                     id="brief-matkul"
                     value={selectedMatkul}
                     onChange={(e) => setSelectedMatkul(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
                   >
-                    <option value="">-- Pilih Mata Kuliah --</option>
-                    {matkulList.map((m) => (
-                      <option key={m.id} value={m.nama}>
-                        {m.nama}
-                      </option>
-                    ))}
+                    {matkulList.length === 0 ? (
+                      <option value="">-- Belum ada mata kuliah (Atur di Tab 03) --</option>
+                    ) : (
+                      <>
+                        <option value="">-- Pilih Mata Kuliah --</option>
+                        {matkulList.map((m) => (
+                          <option key={m.id} value={m.nama}>
+                            {m.nama}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
 
                 <div>
-                  <label htmlFor="brief-logo" className="block text-xs font-semibold text-slate-600 mb-1">Logo Kampus</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="brief-logo" className="block text-xs font-semibold text-slate-600">Logo Kampus</label>
+                    {logoList.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => window.dispatchEvent(new CustomEvent('switch-tab-request', { detail: { tab: 'data' } }))}
+                        className="text-[10px] text-teal-600 hover:underline"
+                      >
+                        + Unggah
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     {(() => {
                       const selectedLogo = logoList.find((l) => l.path === selectedLogoPath);
@@ -1258,12 +1344,18 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                       onChange={(e) => setSelectedLogoPath(e.target.value)}
                       className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
                     >
-                      <option value="">-- Pilih Logo --</option>
-                      {logoList.map((l) => (
-                        <option key={l.id} value={l.path}>
-                          {l.nama} {!l.exists && '(Berkas Tidak Ditemukan)'}
-                        </option>
-                      ))}
+                      {logoList.length === 0 ? (
+                        <option value="">-- Belum ada logo (Atur di Tab 03) --</option>
+                      ) : (
+                        <>
+                          <option value="">-- Pilih Logo Kampus --</option>
+                          {logoList.map((l) => (
+                            <option key={l.id} value={l.path}>
+                              {l.nama} {!l.exists && '(Berkas Tidak Ditemukan)'}
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
