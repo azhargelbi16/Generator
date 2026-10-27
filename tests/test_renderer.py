@@ -321,3 +321,150 @@ def test_judul_berisi_penanda_tidak_menghapus_judul(tmp_path):
     assert any("ISI_LAPORAN" in text for text in texts)
     assert sum("Isi bab." in text for text in texts) == 1
 
+
+# --- Nomor halaman otomatis --------------------------------------------------
+
+
+def test_nomor_halaman_ditambahkan_bila_footer_kosong(tmp_path):
+    fields = {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS}
+    out = renderer.render_report(
+        _tmpl(tmp_path), fields, [], [], None, tmp_path / "o.docx"
+    )
+    doc = Document(out)
+    section = doc.sections[0]
+    assert section.different_first_page_header_footer is True
+    assert "PAGE" in section.footer._element.xml
+    assert 'w:start="0"' in section._sectPr.xml
+
+
+def test_footer_yang_sudah_berisi_teks_tidak_ditambahi_nomor(tmp_path):
+    from docx import Document as DocxDocument
+
+    path = tmp_path / "berfooter.docx"
+    d = DocxDocument()
+    for ph in template.REQUIRED_PLACEHOLDERS:
+        d.add_paragraph(ph)
+    d.sections[0].footer.paragraphs[0].text = "Prodi Agroteknologi"
+    d.save(path)
+
+    fields = {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS}
+    out = renderer.render_report(path, fields, [], [], None, tmp_path / "o.docx")
+    doc = Document(out)
+    footer_text = "\n".join(p.text for p in doc.sections[0].footer.paragraphs)
+    assert "Prodi Agroteknologi" in footer_text
+    assert "PAGE" not in doc.sections[0].footer._element.xml
+
+
+# --- Satu butir satu paragraf & daftar pustaka italic ------------------------
+
+
+def _fields():
+    return {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS}
+
+
+def test_butir_bernomor_dipecah_menjadi_paragraf_terpisah(tmp_path):
+    sections = [Section(1, "Bab", [Paragraph([
+        Sentence("1. Bagaimana pengaruh media sosial?", "x", [0]),
+        Sentence("2. Bagaimana peran waktu penggunaan?", "x", [0]),
+        Sentence("3. Bagaimana dampaknya pada prestasi?", "x", [0]),
+    ])])]
+    out = renderer.render_report(
+        _tmpl(tmp_path), _fields(), sections, [], None, tmp_path / "o.docx"
+    )
+    texts = [p.text for p in Document(out).paragraphs]
+    idx = [next(i for i, t in enumerate(texts) if t.strip().startswith(f"{n}. ")) for n in (1, 2, 3)]
+    assert idx[1] == idx[0] + 1
+    assert idx[2] == idx[1] + 1
+
+
+def test_paragraf_naratif_tetap_satu_paragraf(tmp_path):
+    sections = [Section(1, "Bab", [Paragraph([
+        Sentence("Media sosial telah menjadi bagian hidup mahasiswa.", "x", [0]),
+        Sentence("Penggunaannya berdampak pada prestasi akademik.", "x", [0]),
+        Sentence("Dampak itu bergantung pada motif penggunaan.", "x", [0]),
+    ])])]
+    out = renderer.render_report(
+        _tmpl(tmp_path), _fields(), sections, [], None, tmp_path / "o.docx"
+    )
+    texts = [p.text for p in Document(out).paragraphs]
+    gabungan = [t for t in texts if "Media sosial telah menjadi" in t]
+    assert len(gabungan) == 1
+    assert "Dampak itu bergantung" in gabungan[0]
+
+
+def test_referensi_memakai_run_italic_untuk_nama_jurnal(tmp_path):
+    sections = [Section(1, "Bab", [Paragraph([Sentence("Isi bab.", "x", [0])])])]
+    refs = [[
+        ("Santoso, B. (2024). Judul. ", False),
+        ("Healthcare, 9", True),
+        ("(10), 1272.", False),
+    ]]
+    out = renderer.render_report(
+        _tmpl(tmp_path), _fields(), sections, refs, None, tmp_path / "o.docx"
+    )
+    doc = Document(out)
+    italic_runs = [
+        run.text for p in doc.paragraphs for run in p.runs if run.italic
+    ]
+    assert any("Healthcare, 9" in text for text in italic_runs)
+
+
+def test_referensi_string_biasa_tetap_dirender(tmp_path):
+    sections = [Section(1, "Bab", [Paragraph([Sentence("Isi bab.", "x", [0])])])]
+    out = renderer.render_report(
+        _tmpl(tmp_path), _fields(), sections,
+        ["Santoso, B. (2020). Judul. Jurnal Tanah."], None, tmp_path / "o.docx",
+    )
+    texts = [p.text for p in Document(out).paragraphs]
+    assert any("Jurnal Tanah." in text for text in texts)
+
+
+
+def test_judul_cover_otomatis_title_case(tmp_path):
+    sections = [Section(1, "Bab Satu", [Paragraph([Sentence("Isi bab.", "x", [0])])])]
+    fields = {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS}
+    fields["{{JUDUL}}"] = "dampak inovasi teknologi pada pertanian"
+    fields["{{DOSEN}}"] = "Dr. Ir. Soetomo, M.P."
+    out = renderer.render_report(
+        _tmpl(tmp_path), fields, sections, [], None, tmp_path / "title_case.docx"
+    )
+    text = "\n".join(p.text for p in Document(out).paragraphs)
+    assert "Dampak Inovasi Teknologi pada Pertanian" in text
+
+
+def test_dosen_pengampu_dihapus_jika_kosong(tmp_path):
+    doc = Document()
+    doc.add_paragraph("{{JUDUL}}")
+    doc.add_paragraph("{{NAMA}}")
+    doc.add_paragraph("{{NIM}}")
+    doc.add_paragraph("{{MATA_KULIAH}}")
+    doc.add_paragraph("Dosen Pengampu:")
+    doc.add_paragraph("{{DOSEN}}")
+    doc.add_paragraph("{{TANGGAL}}")
+    doc.add_paragraph("{{DAFTAR_ISI}}")
+    doc.add_paragraph("{{LOGO}}")
+    doc.add_paragraph("{{ISI_LAPORAN}}")
+    doc.add_paragraph("{{DAFTAR_PUSTAKA}}")
+    tmpl_path = tmp_path / "tmpl_dosen.docx"
+    doc.save(tmpl_path)
+
+    sections = [Section(1, "Bab Satu", [Paragraph([Sentence("Isi.", "x", [0])])])]
+    fields = {ph: "x" for ph in template.REQUIRED_PLACEHOLDERS}
+    fields["{{DOSEN}}"] = ""
+    fields["DOSEN"] = ""
+    out = renderer.render_report(
+        tmpl_path, fields, sections, [], None, tmp_path / "no_dosen.docx"
+    )
+    paragraphs = [p.text.strip() for p in Document(out).paragraphs]
+    assert not any("Dosen Pengampu:" in p for p in paragraphs)
+    assert not any("Dosen Pembimbing:" in p for p in paragraphs)
+
+    # Bila diisi, label dan nama dosen tetap muncul
+    fields["{{DOSEN}}"] = "Prof. Dr. Ir. Budi"
+    fields["DOSEN"] = "Prof. Dr. Ir. Budi"
+    out2 = renderer.render_report(
+        tmpl_path, fields, sections, [], None, tmp_path / "with_dosen.docx"
+    )
+    paragraphs2 = [p.text.strip() for p in Document(out2).paragraphs]
+    assert any("Dosen Pengampu:" in p for p in paragraphs2)
+    assert any("Prof. Dr. Ir. Budi" in p for p in paragraphs2)

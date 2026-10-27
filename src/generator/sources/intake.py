@@ -54,6 +54,9 @@ def source_from_doi_record(doi_record: dict[str, Any] | None) -> Source | None:
         container=str(doi_record.get("container", "") or ""),
         doi=str(doi_record.get("doi", "") or ""),
         url=str(doi_record.get("url", "") or ""),
+        volume=str(doi_record.get("volume", "") or ""),
+        issue=str(doi_record.get("issue", "") or ""),
+        pages=str(doi_record.get("pages", "") or ""),
     )
 
 
@@ -101,6 +104,11 @@ def source_from_crossref_message(doi: str, msg: dict[str, Any]) -> Source:
         container=container,
         doi=doi_val,
         url=canonical_url,
+        # Volume/nomor/halaman gratis dari CrossRef untuk referensi APA 7 lengkap;
+        # kadang berupa angka, kadang string ("9-12") — samakan ke string bersih.
+        volume=str(msg.get("volume", "") or "").strip(),
+        issue=str(msg.get("issue", "") or "").strip(),
+        pages=str(msg.get("page", "") or "").strip(),
     )
 
 
@@ -141,6 +149,9 @@ def ensure_title(source: Source, fallback: str) -> Source:
             source.container,
             source.doi,
             source.url,
+            source.volume,
+            source.issue,
+            source.pages,
         )
     return source
 

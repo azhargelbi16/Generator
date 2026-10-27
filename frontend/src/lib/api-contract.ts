@@ -123,6 +123,7 @@ export interface PyWebViewApiContract {
   list_logos(): Promise<Logo[]>;
   upload_logo(): Promise<{ success: boolean; logo?: Logo; error?: string }>;
   delete_logo(id: number): Promise<{ success: boolean }>;
+  open_logos_folder(): Promise<{ success?: boolean; error?: string }>;
   list_templates(): Promise<TemplateItem[]>;
   upload_template(): Promise<{ success: boolean; template?: TemplateItem; error?: string }>;
   delete_template(id: number): Promise<{ success: boolean }>;
@@ -131,7 +132,16 @@ export interface PyWebViewApiContract {
   create_default_template(): Promise<{ success: boolean; template?: TemplateItem; error?: string }>;
 
   // Source Ingestion — kunci `record` sesuai backend
-  pick_pdf_source(): Promise<{ success: boolean; record?: SourceRecord; error?: string }>;
+  pick_pdf_source(): Promise<{
+    success: boolean;
+    record?: SourceRecord;
+    records?: SourceRecord[];
+    errors?: string[];
+    count?: number;
+    warning?: string;
+    error?: string;
+    cancelled?: boolean;
+  }>;
   add_web_source(url: string): Promise<{ success: boolean; record?: SourceRecord; error?: string }>;
   resolve_doi_source(doi: string): Promise<{ success: boolean; record?: SourceRecord; error?: string }>;
   add_manual_source(text: string): Promise<{ success: boolean; record?: SourceRecord; error?: string }>;
@@ -161,4 +171,5 @@ export interface PyWebViewApiContract {
   save_named_draft(draftId: string, state: DraftStatePayload): Promise<{ success: boolean; error?: string }>;
   load_named_draft(draftId: string): Promise<DraftStatePayload | null>;
   delete_named_draft(draftId: string): Promise<{ success: boolean }>;
+  delete_named_drafts(draftIds: string[]): Promise<{ success: boolean }>;
 }

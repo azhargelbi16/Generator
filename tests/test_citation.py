@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from generator.ai.citation import Author, Source, in_text, reference, order_and_label
 
 
@@ -31,8 +34,47 @@ def test_twenty_one_authors():
     assert "…" in r and "&" not in r and "Fam21" in r
 
 
+# --- APA 7: volume, nomor, halaman, dan italic -------------------------------
+
+
+def test_reference_memuat_volume_nomor_dan_halaman():
+    src = Source(
+        [A("Santoso", "Budi")], "2024", "Judul Artikel", "Healthcare",
+        volume="9", issue="10", pages="1272",
+    )
+    r = reference(src)
+    assert "Healthcare, 9(10), 1272." in r
+
+
+def test_reference_tanpa_volume_tetap_bentuk_lama():
+    src = Source([A("Santoso", "Budi")], "2020", "Judul", "Jurnal Tanah")
+    assert "Jurnal Tanah." in reference(src)
+
+
+def test_reference_segments_memiringkan_container_dan_volume():
+    src = Source(
+        [A("Santoso", "Budi")], "2024", "Judul", "Healthcare",
+        volume="9", issue="10", pages="1272",
+    )
+    from generator.ai.citation import reference_segments
+
+    runs = reference_segments(src)
+    italics = [text for text, italic in runs if italic]
+    assert italics == ["Healthcare, 9"]
+    assert any(text == "(10), 1272." and not italic for text, italic in runs)
+
+
+def test_labeled_source_membawa_run_referensi():
+    from generator.ai.citation import _join_runs
+
+    labeled = order_and_label([S([A("Santoso", "Budi")], container="Jurnal")])
+    runs = labeled[0].reference_runs
+    assert _join_runs(runs) == labeled[0].reference
+    assert any(italic for _, italic in runs)
+
+
 def test_no_author_uses_title():
-    assert reference(S([], title="Judul Tanpa Penulis")).startswith("Judul Tanpa Penulis")
+    assert reference(S([], title="Judul Tanpa Penulis")).startswith("Judul tanpa penulis")
 
 
 def test_website_uses_url_when_no_doi():
@@ -147,3 +189,70 @@ def test_labels_for_meneruskan_gaya_sitasi():
     assert labels_for(sources, {0}, style="dkk") == {0: "(Saleh dkk., 2023)"}
     assert labels_for(sources, {0}) == {0: "(Saleh et al., 2023)"}
 
+
+# --- Fase 3: sentence case judul artikel daftar pustaka (APA 7, 17.2) --------
+
+_SOURCES_FILE = Path(__file__).resolve().parents[1] / "scratch" / "student_run" / "final_sources.json"
+
+
+def _source_from_entry(entry: dict) -> Source:
+    from generator.ai.bibliography import _source_from_dict
+
+    return _source_from_dict(entry)
+
+
+def test_judul_artikel_sumber_nyata_sentence_case_apa7():
+    """Tiga referensi MDPI/Liebert pada sumber e2e dikonversi sesuai APA 7."""
+    data = json.loads(_SOURCES_FILE.read_text(encoding="utf-8"))
+    refs = [reference(_source_from_entry(entry)) for entry in data]
+    assert (
+        "The wired generation: Academic and social outcomes of electronic media use "
+        "among university students." in refs[0]
+    )
+    assert (
+        "Social media improves students’ academic performance: Exploring the role of "
+        "social media adoption in the open learning environment among international "
+        "medical students in China." in refs[1]
+    )
+    assert (
+        "The impact of social media use motives on students’ GPA: The mediating role "
+        "of daily time usage." in refs[2]
+    )
+    # Nama jurnal (container) tidak ikut dikonversi.
+    assert "Cyberpsychology, Behavior, and Social Networking" in refs[0]
+    assert "Healthcare" in refs[1]
+
+
+def test_sentence_case_judul_artikel_menghormati_akronim_dan_nama_diri():
+    src = Source(
+        [A("Santoso", "Budi")], "2024",
+        "The Impact of COVID-19 on Public Health in Vietnam: A Review of WHO Guidance",
+        "Jurnal Kesehatan",
+    )
+    assert (
+        "The impact of COVID-19 on public health in Vietnam: A review of WHO guidance."
+        in reference(src)
+    )
+
+
+def test_sentence_case_tidak_menyentuh_nama_jurnal():
+    src = Source(
+        [A("Santoso", "Budi")], "2024", "The Impact of Social Media",
+        "Journal of Health Psychology",
+    )
+    assert "Journal of Health Psychology." in reference(src)
+
+
+
+
+def test_sentence_case_menormalkan_judul_all_caps_dari_pdf():
+    from generator.ai.citation import Source, Author, reference
+    src = Source(
+        [Author("Putra", "Rizki Aditya"), Author("Sadono", "Dwi")],
+        "2024",
+        "EXAMINING THE RELATIONSHIP BETWEEN INNOVATION CHARACTERISTICS AND EXTENSION SUPPORT WHEN USING JAJAR LEGOWO AS AN AGRICULTURAL INNOVATION",
+        "Jurnal AGRISEP: Kajian Masalah Sosial Ekonomi Pertanian dan Agribisnis",
+    )
+    ref = reference(src)
+    assert "Examining the relationship between innovation characteristics and extension support when using jajar legowo as an agricultural innovation." in ref
+    assert "Jurnal AGRISEP: Kajian Masalah Sosial Ekonomi Pertanian dan Agribisnis." in ref

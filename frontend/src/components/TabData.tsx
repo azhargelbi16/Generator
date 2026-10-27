@@ -10,7 +10,8 @@ import {
   Check, 
   Save, 
   UploadCloud, 
-  AlertCircle 
+  AlertCircle,
+  FolderOpen
 } from 'lucide-react';
 import { api, Profile, Dosen, MataKuliah, Logo } from '../lib/api';
 import { toast } from '../lib/toast';
@@ -170,7 +171,7 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
       <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-slate-200 mb-6">
         {[
           { key: 'profil', label: 'Profil Mahasiswa', icon: User },
-          { key: 'dosen', label: 'Dosen Pembimbing/Pengampu', icon: GraduationCap },
+          { key: 'dosen', label: 'Dosen Pengampu', icon: GraduationCap },
           { key: 'matkul', label: 'Mata Kuliah', icon: BookOpen },
           { key: 'logo', label: 'Logo Kampus', icon: ImageIcon },
         ].map((tab) => {
@@ -486,13 +487,25 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
               <h3 className="text-sm font-bold text-slate-800">Koleksi Logo ({logoList.length})</h3>
               <p className="text-xs text-slate-400 mt-0.5">Logo otomatis diskalakan 5x5 cm pada template DOCX.</p>
             </div>
-            <button
-              onClick={handleUploadLogo}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition"
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>Unggah Logo Baru</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => api.openLogosFolder()}
+                className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shadow-xs"
+                title="Buka folder data/logos di File Explorer"
+              >
+                <FolderOpen className="w-4 h-4 text-slate-500" />
+                <span>Buka Folder Logo</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadLogo}
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-xs"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Unggah Logo Baru</span>
+              </button>
+            </div>
           </div>
 
           {logoList.length === 0 ? (
@@ -506,7 +519,9 @@ export const TabData: React.FC<TabDataProps> = ({ isActive = false }) => {
               {logoList.map((l) => (
                 <div key={l.id} className="p-4 rounded-xl border border-slate-200/70 bg-slate-50 flex flex-col items-center justify-between text-center relative group">
                   <div className="w-24 h-24 flex items-center justify-center p-2 bg-white rounded-lg shadow-sm border border-slate-100 mb-3">
-                    {l.exists ? (
+                    {l.exists && l.data_url ? (
+                      <img src={l.data_url} alt={l.nama} className="max-w-full max-h-full object-contain" />
+                    ) : l.exists ? (
                       <img src={`file:///${l.path.replace(/\\/g, '/')}`} alt={l.nama} className="max-w-full max-h-full object-contain" />
                     ) : (
                       <AlertCircle className="w-8 h-8 text-rose-400" />

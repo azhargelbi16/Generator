@@ -63,6 +63,10 @@ def source_to_record(source: Source, text: str, kind: str) -> dict:
         "container": source.container,
         "doi": source.doi,
         "url": source.url,
+        # Data bibliografis CrossRef (APA 7); kosong pada sumber lama.
+        "volume": getattr(source, "volume", "") or "",
+        "issue": getattr(source, "issue", "") or "",
+        "pages": getattr(source, "pages", "") or "",
         "authors": [
             {
                 "family": author.family,
@@ -93,4 +97,7 @@ def record_to_source(record: dict) -> Source:
         container=record.get("container", ""),
         doi=record.get("doi", ""),
         url=record.get("url", ""),
+        volume=str(record.get("volume", "") or ""),
+        issue=str(record.get("issue", "") or ""),
+        pages=str(record.get("pages", "") or ""),
     )

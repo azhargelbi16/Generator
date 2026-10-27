@@ -31,7 +31,12 @@ SPECIAL_PLACEHOLDERS: list[str] = [
     "{{LOGO}}",
 ]
 
-OPTIONAL_PLACEHOLDERS: list[str] = ["{{TAHUN}}", "{{PRODI}}"]
+OPTIONAL_PLACEHOLDERS: list[str] = [
+    "{{TAHUN}}",
+    "{{PRODI}}",
+    "{{FAKULTAS}}",
+    "{{INSTITUSI}}",
+]
 
 _KNOWN = set(REQUIRED_PLACEHOLDERS) | set(SPECIAL_PLACEHOLDERS) | set(OPTIONAL_PLACEHOLDERS)
 

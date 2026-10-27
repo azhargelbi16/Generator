@@ -563,8 +563,10 @@ VARIANT_B_OUTLINE = [
 
 
 def _chapter_reply(title: str, text: str) -> str:
+    """Jawaban model yang benar: satu section subbab berisi, bukan level BAB."""
+    number = title.split()[1].rstrip(".") if title.upper().startswith("BAB") else "1"
     return json.dumps({"sections": [{
-        "level": 1, "title": title,
+        "level": 2, "title": f"{number}.1 Subbab",
         "paragraphs": [{"sentences": [
             {"text": text, "quote": text, "source_ids": [0], "is_factual": True}
         ]}],
@@ -605,24 +607,27 @@ def test_jalur_varian_per_bab_event_berurutan_dan_struktur_lengkap():
         "tema", VARIANT_B_OUTLINE, _variant_sources(), ["teks sumber jurnal."],
         _variant_client(replies), progress=progress, variant="b",
     )
-    assert progress.batches == [(1, 4), (2, 4), (3, 4), (4, 4)]
+    assert progress.batches == [(index, 9) for index in range(1, 10)]
     assert progress.finished_flags == [False]
-    assert len(progress.born) == 4  # satu kalimat per bab, berurutan
+    assert len(progress.born) == 4  # satu kalimat unik per bab, berurutan
     titles = [s.title for s in sections]
     assert titles[0] == "BAB 1. PENDAHULUAN"
     assert "BAB 4. KESIMPULAN DAN SARAN" in titles
     assert len(titles) >= 4
 
 
-def test_jalur_varian_mengirim_max_tokens_8192_dan_timeout_240():
+def test_jalur_varian_mengirim_max_tokens_16384_dan_timeout_240():
     from generator.ai.content import generate_sections as gen
 
     replies = [_chapter_reply(f"BAB {n}. X", f"Isi bab {n}.") for n in range(1, 5)]
     client = _variant_client(replies)
     gen("tema", VARIANT_B_OUTLINE, _variant_sources(), ["teks sumber."],
         client, variant="b")
-    assert client.calls == 4
-    assert all(kw == {"max_tokens": 8192, "timeout": 240.0} for kw in client.kwargs_seen)
+    # Bab dipecah per ≤2 subbab: BAB1 2, BAB2 4, BAB3 2, BAB4 1 = 9 panggilan.
+    assert client.calls == 9
+    # Volume isi 3× lebih besar (3 paragraf per subbab): anggaran token dinaikkan
+    # dari 8192 agar respons tidak terpotong; streaming memakai anggaran yang sama.
+    assert all(kw == {"max_tokens": 16384, "timeout": 240.0} for kw in client.kwargs_seen)
 
 
 def test_jalur_batch_mengirim_max_tokens_16384_tanpa_timeout():
@@ -677,3 +682,342 @@ def test_cancel_jalur_varian_menghentikan_dan_menyimpan_sebagian():
     assert client.calls == 2  # bab 3-4 tidak pernah diminta
     texts = [s.text for sec in sections for p in sec.paragraphs for s in p.sentences]
     assert len(texts) >= 2
+
+
+# --- Perbaikan: sitasi ganda & pengulangan lintas bab ------------------------
+
+
+def test_compose_tidak_menggandakan_sitasi_yang_sudah_ada_di_teks():
+    from generator.ai.content import compose
+
+    p = Paragraph([
+        Sentence("Menurut Lestari dkk. (2024), adopsi AI meningkat.", "q", [0]),
+        Sentence("Setiawan dan Rahardjo (2023) menguji irigasi presisi.", "q", [0]),
+    ])
+    out = compose(p, {0: "(Lestari et al., 2024)"})
+    assert out == (
+        "Menurut Lestari dkk. (2024), adopsi AI meningkat. "
+        "Setiawan dan Rahardjo (2023) menguji irigasi presisi."
+    )
+
+
+def test_compose_tetap_menambah_sitasi_bila_teks_belum_bersitasi():
+    from generator.ai.content import compose
+
+    p = Paragraph([Sentence("Adopsi AI meningkat.", "q", [0])])
+    assert compose(p, {0: "(Lestari et al., 2024)"}) == "Adopsi AI meningkat (Lestari et al., 2024)."
+
+
+def test_merge_sections_membuang_duplikat_identik_lintas_bab():
+    from generator.ai.content import Paragraph, Section, Sentence, _merge_sections
+
+    text = "Biochar menaikkan pH tanah asam pada dosis 10 ton per hektar."
+    existing = [Section(1, "BAB 1. PENDAHULUAN", [Paragraph([Sentence(text, "q", [0])])])]
+    incoming = [
+        Section(1, "BAB 3. HASIL DAN PEMBAHASAN", [Paragraph([Sentence(text, "q", [0])])]),
+        Section(1, "BAB 4. KESIMPULAN", [Paragraph([Sentence(text, "q", [0])])]),
+    ]
+
+    _merge_sections(existing, incoming)
+
+    assert len(existing) == 3
+    assert existing[1].paragraphs == []
+    assert existing[2].paragraphs == []
+
+
+def test_merge_sections_mempertahankan_duplikat_identik_dengan_sitasi_berbeda():
+    from generator.ai.content import Paragraph, Section, Sentence, _merge_sections
+
+    text = "Biochar menaikkan pH tanah asam pada dosis 10 ton per hektar."
+    existing = [Section(1, "BAB 1. PENDAHULUAN", [Paragraph([Sentence(text, "q", [0])])])]
+    incoming = [Section(1, "BAB 3. HASIL", [Paragraph([Sentence(text, "q", [1])])])]
+
+    _merge_sections(existing, incoming)
+
+    # Sumber berbeda = dasar faktual berbeda, jadi tidak dibuang.
+    assert len(existing[1].paragraphs) == 1
+
+
+def test_merge_sections_membuang_dua_set_kesimpulan_parafrase():
+    """BAB 4 kerap datang dua set butir mirip (~0,6); ambang khusus 0,55."""
+    from generator.ai.content import Paragraph, Section, Sentence, _merge_sections
+
+    set_a = [
+        Sentence("1. Motif penggunaan media sosial berpengaruh besar terhadap prestasi akademik mahasiswa.", "q", [0]),
+        Sentence("2. Durasi pemakaian harian menjadi jembatan penurunan hasil belajar mahasiswa.", "q", [0]),
+    ]
+    set_b = [
+        Sentence("1. Motif pemakaian media sosial memengaruhi capaian prestasi akademik mahasiswa.", "q", [0]),
+        Sentence("2. Durasi pemakaian harian menjadi penghubung menurunnya hasil belajar mahasiswa.", "q", [0]),
+    ]
+    existing = [Section(2, "Kesimpulan", [Paragraph(set_a)])]
+    incoming = [Section(2, "Kesimpulan", [Paragraph(set_b)])]
+
+    _merge_sections(existing, incoming)
+
+    texts = [s.text for p in existing[0].paragraphs for s in p.sentences]
+    assert len(texts) == 2, texts  # hanya satu set yang tersisa
+    assert all(t.startswith("1. Motif penggunaan") or t.startswith("2. Durasi pemakaian") for t in texts)
+
+
+def test_merge_sections_kesimpulan_sitasi_berbeda_tetap_dipertahankan():
+    from generator.ai.content import Paragraph, Section, Sentence, _merge_sections
+
+    a = Sentence("1. Motif penggunaan media sosial berpengaruh besar terhadap prestasi akademik mahasiswa.", "q", [0])
+    b = Sentence("1. Motif pemakaian media sosial memengaruhi capaian prestasi akademik mahasiswa.", "q", [1])
+    existing = [Section(2, "Saran", [Paragraph([a])])]
+    incoming = [Section(2, "Saran", [Paragraph([b])])]
+
+    _merge_sections(existing, incoming)
+
+    texts = [s.text for p in existing[0].paragraphs for s in p.sentences]
+    assert len(texts) == 2  # sumber berbeda: keduanya hidup
+
+
+def test_merge_sections_bab_naratif_dedup_parafrase_06():
+    """Kemiripan ~0,66 di bab naratif DIDEDUP (ambang diturunkan ke 0,6)."""
+    from generator.ai.content import Paragraph, Section, Sentence, _merge_sections
+
+    a = Sentence("Pertanian organik memberi manfaat besar bagi petani dan konsumen.", "q", [0])
+    b = Sentence("Pertanian organik memberi manfaat nyata bagi petani dan masyarakat.", "q", [0])
+    existing = [Section(2, "Latar Belakang", [Paragraph([a])])]
+    incoming = [Section(2, "Latar Belakang", [Paragraph([b])])]
+
+    _merge_sections(existing, incoming)
+
+    texts = [s.text for p in existing[0].paragraphs for s in p.sentences]
+    assert len(texts) == 1  # parafrase ringan dibuang
+
+    # Kalimat dengan topik benar-benar berbeda tetap dipertahankan.
+    c = Sentence("Pupuk organik cair mempercepat pertumbuhan akar tanaman muda.", "q", [0])
+    d = Sentence("Pengairan berselang menekan emisi metana pada lahan sawah.", "q", [0])
+    other = [Section(2, "Pembahasan", [Paragraph([c])])]
+    _merge_sections(other, [Section(2, "Pembahasan", [Paragraph([d])])])
+    assert len([s for p in other[0].paragraphs for s in p.sentences]) == 2
+
+
+# --- Alur Rumusan Masalah -> Tujuan -> Pembahasan ----------------------------
+
+
+def test_varian_d_mengirim_rumusan_masalah_dan_tujuan_ke_bab_pembahasan():
+    """Bab 3 menerima konteks Bab 1 agar pembahasan sejajar dengan rumusan masalah."""
+    import json
+
+    from generator import format_spec
+    from generator.ai.citation import Author, Source
+    from generator.ai.content import generate_sections
+
+    captured: list[list[dict]] = []
+
+    def reply(title: str, text: str) -> str:
+        return json.dumps({
+            "sections": [{
+                "level": 2,
+                "title": title,
+                "paragraphs": [{"sentences": [{
+                    "text": text, "quote": "q", "source_ids": [0], "is_factual": True,
+                }]}],
+            }],
+        })
+
+    class Client:
+        def chat(self, messages, **kwargs):
+            captured.append(messages)
+            if len(captured) == 1:
+                return json.dumps({"sections": [
+                    {"level": 2, "title": "Latar Belakang",
+                     "paragraphs": [{"sentences": [
+                         {"text": "Media sosial telah menjadi bagian hidup mahasiswa.",
+                          "quote": "q", "source_ids": [0], "is_factual": True}]}]},
+                    {"level": 2, "title": "Rumusan Masalah",
+                     "paragraphs": [{"sentences": [
+                         {"text": "1. Bagaimana pengaruh motif penggunaan media sosial?",
+                          "quote": "q", "source_ids": [0], "is_factual": True}]}]},
+                    {"level": 2, "title": "Tujuan",
+                     "paragraphs": [{"sentences": [
+                         {"text": "1. Mengetahui pengaruh motif penggunaan media sosial.",
+                          "quote": "q", "source_ids": [0], "is_factual": True}]}]},
+                ]})
+            return reply("Topik bahasan", "Isi bab berikutnya.")
+
+    source = Source([Author("Santoso", "Budi")], "2020", "T", "J")
+    sections = generate_sections(
+        "media sosial", format_spec.outline_titles(format_spec.get_variant("D")),
+        [source], ["teks sumber yang panjang"], Client(), variant="D",
+    )
+
+    assert len(captured) == 9  # varian D: 2 + 3 + 3 + 1 panggilan
+    bab2_prompt = captured[2][-1]["content"]
+    bab3_prompt = captured[5][-1]["content"]
+    assert "Bagaimana pengaruh motif penggunaan media sosial?" in bab2_prompt
+    assert "Mengetahui pengaruh motif penggunaan media sosial." in bab3_prompt
+    assert "KONTEKS DARI BAB SEBELUMNYA" in bab3_prompt
+    assert "BAB 4. KESIMPULAN DAN SARAN" in [s.title for s in sections]
+
+
+# --- Struktur paragraf dari schema pipih Gemini ------------------------------
+
+
+def _flat_sentence(text, **extra):
+    payload = {"text": text, "quote": "", "source_ids": [0], "is_factual": True}
+    payload.update(extra)
+    return payload
+
+
+def test_parser_kalimat_pipih_tanpa_penanda_dipecah_beberapa_paragraf():
+    from generator.ai.content import _sections_from_dict
+
+    data = {"sections": [{
+        "level": 2,
+        "title": "1.1 Latar Belakang",
+        "paragraphs": [_flat_sentence(f"Kalimat nomor {index}.") for index in range(8)],
+    }]}
+    paragraphs = _sections_from_dict(data)[0].paragraphs
+    total = sum(len(paragraph.sentences) for paragraph in paragraphs)
+    assert total == 8
+    assert len(paragraphs) >= 2
+    assert all(len(paragraph.sentences) <= 5 for paragraph in paragraphs)
+
+
+def test_parser_mengelompokkan_paragraf_menurut_field_paragraph():
+    from generator.ai.content import _sections_from_dict
+
+    data = {"sections": [{
+        "level": 2,
+        "title": "1.1 Latar Belakang",
+        "paragraphs": [
+            _flat_sentence("Kalimat pertama.", paragraph=1),
+            _flat_sentence("Kalimat kedua.", paragraph=1),
+            _flat_sentence("Kalimat ketiga.", paragraph=2),
+        ],
+    }]}
+    paragraphs = _sections_from_dict(data)[0].paragraphs
+    assert len(paragraphs) == 2
+    assert len(paragraphs[0].sentences) == 2
+    assert len(paragraphs[1].sentences) == 1
+
+
+def test_parser_butir_bernomor_tetap_satu_per_paragraf():
+    from generator.ai.content import _sections_from_dict
+
+    data = {"sections": [{
+        "level": 2,
+        "title": "1.2 Rumusan Masalah",
+        "paragraphs": [
+            _flat_sentence("1. Pertanyaan pertama?"),
+            _flat_sentence("2. Pertanyaan kedua?"),
+            _flat_sentence("3. Pertanyaan ketiga?"),
+            _flat_sentence("4. Pertanyaan keempat?"),
+            _flat_sentence("5. Pertanyaan kelima?"),
+        ],
+    }]}
+    paragraphs = _sections_from_dict(data)[0].paragraphs
+    assert len(paragraphs) == 5
+    assert all(len(paragraph.sentences) == 1 for paragraph in paragraphs)
+
+
+def test_parser_menerima_kalimat_pipih_di_level_section():
+    from generator.ai.content import _sections_from_dict
+
+    data = {"sections": [{
+        "level": 2,
+        "title": "2.1 Tinjauan",
+        "sentences": [_flat_sentence(f"Kalimat {index}.") for index in range(8)],
+    }]}
+    paragraphs = _sections_from_dict(data)[0].paragraphs
+    assert sum(len(p.sentences) for p in paragraphs) == 8
+    assert len(paragraphs) >= 2
+
+
+def test_rencana_generasi_memecah_bab_tanpa_judul_bab():
+    from generator.ai.content import _chapter_generation_plans
+
+    plans = _chapter_generation_plans([(
+        "BAB 2. TINJAUAN PUSTAKA",
+        [
+            "BAB 2. TINJAUAN PUSTAKA",
+            "2.1 {Subjek}", "2.1.1 {Aspek 1}", "2.1.2 {Aspek 2}",
+            "2.2 {Objek}", "2.2.1 {Aspek 1}",
+        ],
+    )])
+    assert len(plans) == 3  # potongan 2 + 2 + 1 subbab
+    assert plans[0][2] == ["2.1 {Subjek}", "2.1.1 {Aspek 1}"]
+    assert plans[1][2] == ["2.1.2 {Aspek 2}", "2.2 {Objek}"]
+    assert plans[2][2] == ["2.2.1 {Aspek 1}"]
+    assert plans[0][3] is True and plans[1][3] is False
+    assert all("BAB 2. TINJAUAN PUSTAKA" not in titles for _, _, titles, _ in plans)
+
+
+# --- Retry bila model menaruh isi di level BAB -------------------------------
+
+
+def test_bab_diulang_sekali_bila_isi_menempel_di_level_bab():
+    import json
+    import re
+
+    from generator.ai.citation import Author, Source
+    from generator.ai.content import generate_sections
+
+    class FocusClient:
+        def __init__(self):
+            self.calls = 0
+            self.calls_by_chapter: dict[str, int] = {}
+
+        def chat(self, messages, **kwargs):
+            system = messages[0]["content"]
+            match = re.search(r'tulis HANYA section untuk "([^"]+)"', system)
+            focus = match.group(1) if match else ""
+            self.calls += 1
+            self.calls_by_chapter[focus] = self.calls_by_chapter.get(focus, 0) + 1
+            if focus.startswith("BAB 1") and self.calls_by_chapter[focus] == 1:
+                # Respons salah: isi diletakkan di level BAB, bukan subbab.
+                return json.dumps({"sections": [{
+                    "level": 1,
+                    "title": "BAB 1. PENDAHULUAN",
+                    "paragraphs": [_flat_sentence("Isi nyasar di level bab.")],
+                }]})
+            number = focus.split()[1].rstrip(".") if focus else "1"
+            return json.dumps({"sections": [{
+                "level": 2,
+                "title": f"{number}.1 Subbab",
+                "paragraphs": [{"sentences": [{
+                    "text": f"Isi bab {number}.",
+                    "quote": "q",
+                    "source_ids": [0],
+                    "is_factual": True,
+                }]}],
+            }]})
+
+    client = FocusClient()
+    source = Source([Author("Santoso", "Budi")], "2020", "T", "J")
+    sections = generate_sections(
+        "tema", ["BAB 1. PENDAHULUAN"], [source], ["teks sumber yang panjang"],
+        client, variant="B",
+    )
+
+    assert client.calls_by_chapter["BAB 1. PENDAHULUAN"] == 3  # 2 bagian + 1 ulangan
+    assert client.calls == 10  # 9 panggilan (bab dipecah) + 1 ulangan
+    texts = [s.text for sec in sections for p in sec.paragraphs for s in p.sentences]
+    assert "Isi nyasar di level bab." not in texts  # isi salah dibersihkan
+    assert any("Isi bab 1." in text for text in texts)
+
+
+
+def test_compose_citation_smoothing_meredam_repetisi_beruntun():
+    from generator.ai.content import Paragraph, Sentence, compose
+
+    # 4 kalimat berturut-turut dari sumber [0]
+    p = Paragraph([
+        Sentence("Kalimat pertama membahas isu.", "q1", [0]),
+        Sentence("Kalimat kedua memperdalam analisis.", "q2", [0]),
+        Sentence("Kalimat ketiga menjelaskan metode.", "q3", [0]),
+        Sentence("Kalimat keempat menyajikan temuan.", "q4", [0]),
+    ])
+    out = compose(p, {0: "(Kalfas et al., 2024)"})
+    # Hanya kalimat terakhir yang ditempeli sitasi parentetikal
+    assert out == (
+        "Kalimat pertama membahas isu. "
+        "Kalimat kedua memperdalam analisis. "
+        "Kalimat ketiga menjelaskan metode. "
+        "Kalimat keempat menyajikan temuan (Kalfas et al., 2024)."
+    )

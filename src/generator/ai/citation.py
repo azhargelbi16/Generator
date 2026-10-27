@@ -25,6 +25,11 @@ class Source:
     container: str = ""
     doi: str = ""
     url: str = ""
+    # Data bibliografis tambahan dari CrossRef (APA 7: jurnal, volume(nomor), halaman).
+    # Kosong bila sumber lama/tidak diketahui — referensi jatuh ke bentuk lamanya.
+    volume: str = ""
+    issue: str = ""
+    pages: str = ""
 
 
 @dataclass
@@ -35,6 +40,13 @@ class LabeledSource:
     in_text: str
     reference: str
     in_text_short: str = ""
+    # Referensi terpejal per run: (teks, italic) — dipakai renderer DOCX untuk
+    # miringkan nama jurnal + volume sesuai APA 7; kosong bila tidak relevan.
+    reference_runs: list = None
+
+    def __post_init__(self):
+        if self.reference_runs is None:
+            self.reference_runs = []
 
 
 def initials(given: str) -> str:
@@ -183,24 +195,153 @@ def _link(source: Source) -> str:
     return ""
 
 
-def reference(source: Source, *, suffix: str = "") -> str:
+# --- Sentence case judul artikel (APA 7, 17.2) ------------------------------
+# Nama diri umum yang kapitalnya dipertahankan; daftar ini boleh tumbuh bila
+# ada nama diri lain yang muncul di sumber. Hanya judul artikel yang dikonversi,
+# bukan nama jurnal/buku (container).
+_TITLE_PROPER_NOUNS = (
+    "Vietnam", "China", "Indonesia", "Asia", "America", "WeChat", "Facebook",
+    "Zalo", "TikTok", "Telegram", "WhatsApp", "Twitter", "Instagram",
+)
+_TITLE_PROPER_NOUN_CANON = {name.casefold(): name for name in _TITLE_PROPER_NOUNS}
+_KNOWN_ACRONYMS = frozenset({
+    "AI", "IOT", "GPS", "GIS", "CNN", "RNN", "LSTM", "SVM", "ANN",
+    "FAO", "WHO", "UNESCO", "PBB", "BPS", "USA", "UK", "EU", "COVID-19",
+    "DNA", "RNA", "NPK", "PH", "GPA",
+})
+
+_TITLE_EDGE_PUNCT = "()[]{}.,;:!?\"'“”‘’—–-"
+
+
+def _is_uppercase_acronym(core: str) -> bool:
+    """True bila kata SEMULA seluruhnya kapital dan berhuruf >= 2 (GPA, COVID-19)."""
+    letters = [char for char in core if char.isalpha()]
+    return len(letters) >= 2 and all(char.isupper() for char in letters)
+
+
+def _capitalize_first_alpha(text: str) -> str:
+    """Kapitalkan huruf pertama pada teks; tanda baca pembuka dilewati."""
+    for position, char in enumerate(text):
+        if char.isalpha():
+            return text[:position] + char.upper() + text[position + 1:]
+    return text
+
+
+def _sentence_case_title(title: str) -> str:
+    """Judul artikel gaya sentence case APA 7 secara deterministik.
+
+    Semua kata dihuruf-kecilkan KECUALI (i) kata pertama judul, (ii) kata
+    pertama setelah titik dua, (iii) akronim (kata yang SEMULA seluruhnya
+    kapital >= 2 huruf, mis. GPA/COVID-19), dan (iv) nama diri pada daftar
+    putih. Bila seluruh judul berasal dari header jurnal yang ALL CAPS, kata-kata
+    dikonversi ke huruf kecil terlebih dahulu kecuali akronim baku.
+    Tanda kutip dan tanda baca di tepi kata dipertahankan.
+    """
+    words = str(title or "").split()
+    if not words:
+        return ""
+
+    # Deteksi bila judul secara dominan berupa ALL CAPS (dari header jurnal)
+    alpha_words = [w.strip(_TITLE_EDGE_PUNCT) for w in words if any(c.isalpha() for c in w)]
+    caps_count = sum(1 for w in alpha_words if len(w) >= 2 and w.isupper())
+    is_all_caps_title = len(alpha_words) >= 3 and (caps_count / len(alpha_words)) >= 0.6
+
+    cased: list[str] = []
+    at_sentence_start = True
+    for word in words:
+        core = word.strip(_TITLE_EDGE_PUNCT)
+        if not core:
+            cased.append(word)
+            at_sentence_start = False
+            continue
+        start = word.find(core)
+        prefix, suffix = word[:start], word[start + len(core):]
+        if is_all_caps_title:
+            if core.upper() in _KNOWN_ACRONYMS:
+                body = core.upper()
+            elif core.casefold() in _TITLE_PROPER_NOUN_CANON:
+                body = _TITLE_PROPER_NOUN_CANON[core.casefold()]
+            elif at_sentence_start:
+                body = _capitalize_first_alpha(core.lower())
+            else:
+                body = core.lower()
+        else:
+            if _is_uppercase_acronym(core):
+                body = core
+            elif core.casefold() in _TITLE_PROPER_NOUN_CANON:
+                body = _TITLE_PROPER_NOUN_CANON[core.casefold()]
+            elif at_sentence_start:
+                body = _capitalize_first_alpha(core.lower())
+            else:
+                body = core.lower()
+        cased.append(prefix + body + suffix)
+        at_sentence_start = word.rstrip().endswith(":")
+    return " ".join(cased)
+
+
+def _container_segments(source: Source) -> list[tuple[str, bool]]:
+    """Segmen container APA 7: (teks, italic).
+
+    Contoh: container "Healthcare", volume 9, issue 10, pages 1272 menjadi
+    [("Healthcare, 9", True), ("(10), 1272.", False)] — judul jurnal dan volume
+    miring; nomor dan halaman tegak. Tanpa data volume, seluruhnya miring
+    ("Healthcare.").
+    """
+    container = str(source.container or "").strip().rstrip(".")
+    if not container:
+        return []
+    volume = str(source.volume or "").strip()
+    issue = str(source.issue or "").strip()
+    pages = str(source.pages or "").strip().rstrip(".")
+    italic_text = f"{container}, {volume}" if volume else container
+    tail = ""
+    if issue:
+        tail += f"({issue})"
+    if pages:
+        tail += (", " if tail else "") + pages
+    if tail:
+        return [(italic_text, True), (tail + ".", False)]
+    return [(italic_text + ".", True)]
+
+
+def reference_segments(source: Source, *, suffix: str = "") -> list[tuple[str, bool]]:
+    """Referensi APA 7 terpejal per run: (teks, italic)."""
     year = source.year or "n.d."
     year_str = f"({year}{suffix})."
-    segments: list[str] = []
+    segs: list[tuple[str, bool]] = []
     author_text = _authors_reference(source.authors) if source.authors else ""
+    title = _sentence_case_title(source.title) if source.title else ""
     if author_text:
-        segments.append(f"{author_text} {year_str}")
-        if source.title:
-            segments.append(f"{source.title}.")
+        segs.append((f"{author_text} {year_str}", False))
+        if title:
+            segs.append((f"{title}.", False))
     else:
-        head = f"{source.title}." if source.title else ""
-        segments.append(f"{head} {year_str}".strip())
-    if source.container:
-        segments.append(f"{source.container}.")
+        head = f"{title}." if title else ""
+        segs.append((f"{head} {year_str}".strip(), False))
+    segs.extend(_container_segments(source))
     link = _link(source)
     if link:
-        segments.append(link)
-    return " ".join(segments)
+        segs.append((link, False))
+    return segs
+
+
+def _join_runs(segments: list[tuple[str, bool]]) -> str:
+    """Gabung run menjadi teks; nomor "(10)" menempel pada volume tanpa spasi."""
+    out = ""
+    for text, _italic in segments:
+        if not text:
+            continue
+        if not out:
+            out = text
+        elif text.startswith("(") or text.startswith(","):
+            out += text
+        else:
+            out += " " + text
+    return out
+
+
+def reference(source: Source, *, suffix: str = "") -> str:
+    return _join_runs(reference_segments(source, suffix=suffix))
 
 
 def _needs_initials(source: Source, others: Sequence[Source]) -> bool:
@@ -272,6 +413,7 @@ def order_and_label(
                     disambiguate=disambiguate,
                 ),
                 reference=reference(source, suffix=suffix),
+                reference_runs=reference_segments(source, suffix=suffix),
             )
         )
     return labels

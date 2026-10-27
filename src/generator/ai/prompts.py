@@ -36,9 +36,42 @@ def bibliography_prompt(text: str) -> list[dict]:
 
 
 _CONTENT_SHAPE = (
-    '{"sections":[{"level":1,"title":"","paragraphs":[{"sentences":['
-    '{"text":"","quote":"","source_ids":[],"is_factual":true}]}]}]}'
+    '{"sections":[{"level":2,"title":"2.1 Judul Subbab","paragraphs":[{"sentences":['
+    '{"text":"","quote":"","source_ids":[],"is_factual":true,"paragraph":1}]}]}]}'
 )
+
+
+def paragraph_guidance(outline: list[str]) -> str:
+    """Panduan isi tiap paragraf sesuai jenis bab, agar paragraf baru tidak mengulang.
+
+    Hanya bab kajian (Tinjauan Pustaka / Hasil dan Pembahasan) yang diberi
+    panduan; bab lain mengembalikan string kosong.
+    """
+    joined = " ".join(str(title).lower() for title in outline)
+    if "hasil" in joined:
+        return (
+            "PANDUAN PARAGRAF BAB HASIL DAN PEMBAHASAN:\n"
+            "- Subbab Hasil: paragraf 1 temuan utama; paragraf 2 temuan pendukung "
+            "atau perbandingan antarsumber; paragraf 3 implikasi awal temuan.\n"
+            "- Subbab Pembahasan: paragraf 1 tafsir temuan; paragraf 2 perbandingan "
+            "dengan studi lain (persamaan/perbedaan/sebabnya); paragraf 3 mekanisme, "
+            "implikasi, atau keterbatasan."
+        )
+    if "pembahasan" in joined:
+        return (
+            "PANDUAN PARAGRAF BAB PEMBAHASAN:\n"
+            "- Paragraf 1: temuan utama subbab beserta bukti dari sumber.\n"
+            "- Paragraf 2: perbandingan atau kontras antarsumber.\n"
+            "- Paragraf 3: mekanisme, implikasi, atau keterbatasan temuan."
+        )
+    if "tinjauan pustaka" in joined or "kajian" in joined:
+        return (
+            "PANDUAN PARAGRAF BAB TINJAUAN PUSTAKA:\n"
+            "- Paragraf 1: definisi/konsep dan batasannya menurut sumber.\n"
+            "- Paragraf 2: bukti-bukti studi dan perbandingannya (setuju/berbeda).\n"
+            "- Paragraf 3: sintesis yang menghubungkan topik dengan masalah laporan."
+        )
+    return ""
 
 
 def content_prompt(
@@ -47,6 +80,8 @@ def content_prompt(
     sources: list,
     chunk_refs: list[tuple[int, str]],
     variant: str | None = None,
+    context: str = "",
+    chapter_focus: str = "",
 ) -> list[dict]:
     """Instruksi penulisan isi; tiap chunk diberi label `[sumber <id>]`.
 
@@ -62,12 +97,47 @@ def content_prompt(
         "quote diambil harfiah dari teks sumber sebagai bukti. "
         "source_ids hanya berisi indeks sumber yang ditandai pada label [sumber <id>] yang benar-benar mendasari kalimat. "
         "is_factual bernilai false untuk kalimat yang bukan klaim faktual, misalnya kalimat pengantar atau transisi. "
-        f"Balas hanya dengan JSON berbentuk {_CONTENT_SHAPE}, dengan satu bab per judul di outline. PENTING: Semua bab harus berada di dalam SATU array sections tunggal tanpa mengulang kunci sections."
+        "KEDALAMAN ISI WAJIB: setiap subbab naratif pada bab kajian (BAB 2 dan BAB 3) ditulis minimal 3 paragraf, "
+        "dan subbab level 3 minimal 2 sampai 3 paragraf; setiap paragraf berisi 3 sampai 5 kalimat. KECUALI "
+        "subbab daftar bernomor (rumusan masalah, tujuan, kesimpulan, saran, alat/bahan, langkah kerja) yang "
+        "tetap satu butir satu kalimat tanpa paragraf tambahan. Tandai batas paragraf: kirim setiap kalimat "
+        "sebagai objek terpisah dan isi field \"paragraph\" dengan nomor paragraf (1, 2, 3, ...) untuk kalimat "
+        "yang berada dalam paragraf yang sama. Setiap paragraf baru WAJIB membawa aspek baru — temuan berbeda, "
+        "perbandingan antarsumber, mekanisme, atau implikasi — bukan memparafrase kalimat yang sudah ditulis; "
+        "kalimat mirip akan dibuang sistem dan tidak boleh diulang untuk memenuhi kuota. "
+        "Tulis HANYA subbab pada daftar tugas ini; JANGAN menulis ulang pengantar atau "
+        "kerangka bab yang sudah dicakup langkah sebelumnya, dan setiap paragraf wajib "
+        "membawa informasi baru. "
+        "Jangan menulis sitasi di dalam teks; sitasi ditambahkan aplikasi dari source_ids. WAJIB SITASI DI BAB 2 DAN BAB 3: Seluruh subbab naratif pada BAB 2 (TINJAUAN PUSTAKA) dan BAB 3 (PEMBAHASAN) WAJIB mengutip sumber literatur (isi quote persis dan source_ids valid); DILARANG mengosongkan source_ids pada subbab tinjauan pustaka. "
+        "PENTING: Butir Rumusan Masalah, Tujuan Penelitian, dan Saran adalah kalimat peneliti sendiri, BUKAN klaim dari sumber; DILARANG memberi sitasi, kutipan (quote), atau source_ids pada subbab-subbab tersebut (isi source_ids: [] dan is_factual: false). "
+        "Jangan menyalin kalimat sumber kata per kata; susun ulang dengan kalimat sendiri. "
+        "Jangan mengulang kalimat atau fakta yang sudah ditulis pada bab lain. "
+        f"Balas hanya dengan JSON berbentuk {_CONTENT_SHAPE}. Buat SATU section untuk SETIAP judul subbab di daftar (judul section = judul subbab itu persis); jangan membuat section berjudul \"BAB ...\" dan jangan menggabungkan beberapa subbab dalam satu section. PENTING: Semua section harus berada di dalam SATU array sections tunggal tanpa mengulang kunci sections."
     )
     variant_spec = format_spec.get_variant(variant)
     if variant_spec is not None:
         system += "\n\n" + format_spec.format_block(variant_spec)
-    if any(re.match(r"^\d+\.\d+", t.strip()) for t in outline):
+    # Chunk subbab bisa datang tanpa judul bab; fokus bab tetap dipakai agar
+    # panduan paragraf dan aturan subbab tetap berlaku.
+    effective_outline = [str(t) for t in outline if str(t).strip()]
+    if not effective_outline and chapter_focus:
+        effective_outline = [chapter_focus]
+    guidance = paragraph_guidance(effective_outline + ([chapter_focus] if chapter_focus else []))
+    if guidance:
+        system += "\n\n" + guidance
+    system += (
+        "\n\nATURAN KUTIPAN: quote harus salinan PERSIS dan bersambung minimal 5 kata "
+        "dari teks sumber; jangan memakai elipsis (...) atau mengganti kata. Bila tidak "
+        "ada potongan persis yang mendukung, jangan tulis kalimat itu."
+    )
+    if chapter_focus:
+        system += (
+            "\n\nTUGAS BAB INI: tulis HANYA section untuk "
+            f"\"{chapter_focus}\" beserta subbabnya. JANGAN menulis bab atau subbab "
+            "bab lain; isi bab ini tidak boleh diletakkan pada section berjudul "
+            "\"BAB ...\" (section bab selalu paragraphs: [])."
+        )
+    if any(re.match(r"^\d+\.\d+", t.strip()) for t in effective_outline):
         system += (
             "\n\nPENTING UNTUK SUBBAB:\n"
             "- Wajib buat section terpisah untuk SETIAP judul yang diminta pada outline secara berurutan.\n"
@@ -91,9 +161,16 @@ def content_prompt(
         else:
             labeled_parts.append(f"[sumber {source_id}]\n{text}")
     labeled_chunks = "\n\n".join(labeled_parts)
+    context_block = (
+        "\n\nKONTEKS DARI BAB SEBELUMNYA (wajib diacu agar alur laporan nyambung; "
+        "jangan mengulang kalimatnya):\n" + context
+        if context.strip()
+        else ""
+    )
     user = (
         f"Tema laporan: {topic}\n"
-        f"Judul bab yang wajib ditulis, berurutan: {', '.join(outline)}\n\n"
+        f"Judul subbab yang wajib ditulis, berurutan: {', '.join(effective_outline)}\n"
+        f"{context_block}\n"
         "Daftar sumber:\n" + "\n".join(source_lines) + "\n\n"
         "Teks sumber:\n" + labeled_chunks
     )

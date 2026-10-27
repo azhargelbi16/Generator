@@ -40,6 +40,7 @@ export interface Logo {
   nama: string;
   path: string;
   exists: boolean;
+  data_url?: string;
 }
 
 export interface TemplateSpec {
@@ -249,6 +250,7 @@ export const api = {
   listLogos: () => callApi<Logo[]>('list_logos'),
   uploadLogo: () => callApi<{ success?: boolean; logo?: Logo; cancelled?: boolean }>('upload_logo'),
   deleteLogo: (id: number) => callApi<{ success: boolean }>('delete_logo', id),
+  openLogosFolder: () => callApi<{ success?: boolean; error?: string }>('open_logos_folder'),
 
   // Templates
   listTemplates: () => callApi<TemplateItem[]>('list_templates'),
@@ -260,7 +262,16 @@ export const api = {
   openTemplatesFolder: () => callApi<{ success: boolean; error?: string }>('open_templates_folder'),
 
   // Sources
-  pickPdfSource: () => callApi<{ success?: boolean; record?: SourceRecord; error?: string; cancelled?: boolean }>('pick_pdf_source'),
+  pickPdfSource: () => callApi<{
+    success: boolean;
+    record?: SourceRecord;
+    records?: SourceRecord[];
+    errors?: string[];
+    count?: number;
+    warning?: string;
+    error?: string;
+    cancelled?: boolean;
+  }>('pick_pdf_source'),
   addWebSource: (url: string) => callApi<{ success?: boolean; record?: SourceRecord; error?: string }>('add_web_source', url),
   addManualSource: (text: string) => callApi<{ success?: boolean; record?: SourceRecord; error?: string }>('add_manual_source', text),
   resolveDoiSource: (doi: string) => callApi<{ success?: boolean; record?: SourceRecord; error?: string }>('resolve_doi_source', doi),
@@ -278,6 +289,7 @@ export const api = {
   saveNamedDraft: (name: string, state: any) => callApi<{ success?: boolean; draft_id?: string; error?: string }>('save_named_draft', name, state),
   loadNamedDraft: (draftId: string) => callApi<{ success?: boolean; draft?: any; error?: string }>('load_named_draft', draftId),
   deleteNamedDraft: (draftId: string) => callApi<{ success?: boolean }>('delete_named_draft', draftId),
+  deleteNamedDrafts: (draftIds: string[]) => callApi<{ success?: boolean }>('delete_named_drafts', draftIds),
 
   // Generation
   startGeneration: (req: { topic: string; outline: string[]; sources: SourceRecord[]; variant: string }) =>

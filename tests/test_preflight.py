@@ -122,3 +122,84 @@ def test_gaya_sitasi_tidak_dikenal_menghasilkan_baris_gagal():
     # 2. find_issues juga mendeteksi citation_style issue
     issues = find_issues("Laporan Pertanian", sources, statuses, {0}, None, style="unknown_style")
     assert any(i.kind == "citation_style" for i in issues)
+
+
+# --- Gerbang ekspor keras: dokumen belum layak dikumpulkan -------------------
+
+
+def test_export_blockers_menolak_laporan_tanpa_isi():
+    from generator.preflight import export_blockers
+
+    blockers = export_blockers([Section(1, "BAB 1. PENDAHULUAN", [])], [])
+    assert any("masih kosong" in blocker for blocker in blockers)
+
+
+def test_export_blockers_menolak_penanda_tabel_yang_belum_diisi():
+    from generator.preflight import export_blockers
+
+    sections = [
+        Section(1, "BAB 3. HASIL", [
+            Paragraph([Sentence("[TABEL: Ringkasan hasil penelitian]", "", [], is_factual=False)])
+        ])
+    ]
+    blockers = export_blockers(sections, ["Santoso, B. (2020). Judul. Jurnal."])
+    assert any("[TABEL/GAMBAR/FOTO]" in blocker for blocker in blockers)
+
+
+def test_export_blockers_menolak_bab_wajib_kosong():
+    from generator.preflight import export_blockers
+
+    sections = [
+        Section(1, "BAB 1. PENDAHULUAN", [Paragraph([Sentence("Isi.", "q", [0])])]),
+        Section(1, "BAB 2. TINJAUAN PUSTAKA", []),
+    ]
+    blockers = export_blockers(sections, ["Santoso, B. (2020). Judul. Jurnal."])
+    assert any("bagian wajib masih kosong" in blocker for blocker in blockers)
+    assert any("BAB 2" in blocker for blocker in blockers)
+
+
+def test_export_blockers_menolak_sitasi_tanpa_daftar_pustaka():
+    from generator.preflight import export_blockers
+
+    sections = [Section(1, "BAB 1", [Paragraph([Sentence("Klaim faktual.", "q", [0])])])]
+    blockers = export_blockers(sections, [])
+    assert any("daftar pustaka kosong" in blocker for blocker in blockers)
+
+
+def test_export_blockers_menerima_dokumen_lengkap():
+    from generator.preflight import export_blockers
+
+    sections = [Section(1, "BAB 1", [Paragraph([Sentence("Klaim faktual dengan bukti.", "q", [0])])])]
+    assert export_blockers(sections, ["Santoso, B. (2020). Judul. Jurnal."]) == []
+
+    # Bab induk tanpa paragraf sendiri tetap sah bila subbabnya berisi.
+    sections = [
+        Section(1, "BAB 1. PENDAHULUAN", []),
+        Section(2, "1.1 Latar Belakang", [Paragraph([Sentence("Konteks masalah.", "q", [0])])]),
+    ]
+    assert export_blockers(sections, ["Santoso, B. (2020). Judul. Jurnal."]) == []
+
+
+def test_pemeriksaan_menandai_sumber_tanpa_penulis():
+    """Kasus ekstraksi gagal (judul dokumen masuk sebagai 'penulis')."""
+    sources = [Source([], "2023", "Biochar dan Kesehatan Tanah", "Jurnal Tanah")]
+    sections = [Section(1, "Bab", [Paragraph([Sentence(GOOD_QUOTE, GOOD_QUOTE, [0])])])]
+    statuses = verify_sections(sections, {0: GOOD_QUOTE})
+    checks = run_checks("Laporan", sources, statuses, {0}, None)
+    konsisten = next(c for c in checks if c.label == "Sitasi & pustaka konsisten")
+    assert konsisten.ok is False
+    assert "tanpa penulis" in konsisten.detail
+
+
+def test_judul_panjang_tidak_memicu_peringatan_nama_berkas():
+    """Fase 3: nama berkas panjang dipotong rapi, bukan diperingatkan panjang."""
+    judul = (
+        "Pengaruh Media Sosial terhadap Prestasi Akademik Mahasiswa dalam "
+        "Pembelajaran Jarak Jauh di Perguruan Tinggi Indonesia dan Malaysia"
+    )
+    checks = run_checks(judul, [], [], set(), None)
+    nama = next(check for check in checks if check.label == "Nama berkas")
+    assert nama.ok is True
+    assert len(nama.detail) <= 80
+    assert "filename" not in {issue.kind for issue in find_issues(judul, [], [], set(), None)}
+

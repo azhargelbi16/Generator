@@ -49,10 +49,17 @@ export const App: React.FC = () => {
     window.addEventListener('app-toast', handleToast);
     window.addEventListener('ai-status-changed', handleAiStatus);
     window.addEventListener('generator-save-state', handleSaveState);
+
+    const handleSwitchTab = (e: Event) => {
+      const tab = (e as CustomEvent).detail?.tab;
+      if (tab) setCurrentTab(tab as TabKey);
+    };
+    window.addEventListener('switch-tab-request', handleSwitchTab);
     return () => {
       window.removeEventListener('app-toast', handleToast);
       window.removeEventListener('ai-status-changed', handleAiStatus);
       window.removeEventListener('generator-save-state', handleSaveState);
+      window.removeEventListener('switch-tab-request', handleSwitchTab);
     };
   }, []);
 
@@ -127,7 +134,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="app-shell flex h-screen w-screen overflow-hidden font-sans">
+    <div className="app-shell flex h-screen w-screen overflow-hidden font-sans p-3 gap-3 bg-[#EEF5F5] box-border">
       <a className="skip-link" href="#workspace">Lewati ke area kerja</a>
       <Sidebar
         currentTab={currentTab}
@@ -153,8 +160,8 @@ export const App: React.FC = () => {
         tabIndex={mobileNavOpen ? 0 : -1}
       />
 
-      <main id="workspace" className="app-main flex-1 flex flex-col h-full overflow-hidden relative" tabIndex={-1}>
-        <header className="app-header shrink-0 z-10">
+      <main id="workspace" className="app-main flex-1 flex flex-col h-full overflow-hidden rounded-[32px] bg-white/80 backdrop-blur-xl border border-white shadow-xl relative min-w-0" tabIndex={-1}>
+        <header className="h-14 px-6 flex items-center justify-between border-b border-teal-100/70 bg-white/70 backdrop-blur-md shrink-0 z-20">
           <div className="app-header-leading">
             <button
               type="button"
@@ -199,12 +206,14 @@ export const App: React.FC = () => {
               isActive={currentTab === 'laporan'}
               onGenerateComplete={handleGenerateComplete}
               onGeneratingChange={setIsGeneratingReport}
+              onNavigateToReview={() => setCurrentTab('review')}
             />
           </div>
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'review' ? 'flex' : 'hidden'}`}>
             <TabReview
               isActive={currentTab === 'review'}
               onExportSuccess={handleExportSuccess}
+              onNavigateToLaporan={() => setCurrentTab('laporan')}
             />
           </div>
           <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'data' ? 'flex' : 'hidden'}`}>

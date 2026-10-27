@@ -7,6 +7,7 @@ ada temuan). `fix_mojibake` bekerja pada salinan baru; data asli tak disentuh.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from .verification import SentenceStatus
 
 _STYLE_LABEL = {"et_al": "et al.", "dkk": "dkk."}
 _FILENAME_UNSAFE = frozenset('.<>:"/\\|?*')
+_MARKER_RE = re.compile(r"\[(?:TABEL|GAMBAR|FOTO)\s*:", re.IGNORECASE)
 
 
 @dataclass
@@ -86,6 +88,15 @@ def _citation_problems(
             "entri pustaka tanpa penulis dan judul: sumber "
             + ", ".join(str(index + 1) for index in tanpa_penulis)
         )
+    without_author = [
+        index for index in valid_cited
+        if not sources[index].authors and sources[index].title.strip()
+    ]
+    if without_author:
+        problems.append(
+            "entri pustaka tanpa penulis (APA memakai judul; periksa apakah penulis "
+            "terlewat): sumber " + ", ".join(str(index + 1) for index in without_author)
+        )
     tanpa_judul = [
         index
         for index in valid_cited
@@ -134,6 +145,50 @@ def _empty_section_titles(sections: list[Section] | None) -> list[str]:
         for section in sections
         if section.title.strip() and not has_own[id(section)] and not subtree_has[id(section)]
     ]
+
+
+def export_blockers(
+    sections: list[Section] | None,
+    references: list[str] | None = None,
+) -> list[str]:
+    """Alasan KERAS menolak ekspor — murah, hanya menelusuri struktur di memori.
+
+    Berbeda dari `find_issues` (yang hanya memicu dialog konfirmasi dan bisa
+    dilewati), daftar ini dipakai `export_report` untuk menolak berkas yang jelas
+    belum layak dikumpulkan: laporan tanpa isi, bab wajib yang kosong, penanda
+    tabel/gambar yang belum diganti, dan daftar pustaka kosong padahal ada klaim
+    faktual. Biaya O(jumlah kalimat) tanpa verifikasi ulang dan tanpa panggilan AI.
+    """
+    blockers: list[str] = []
+    total_sentences = 0
+    marker_count = 0
+    has_factual = False
+    for section in sections or []:
+        for paragraph in section.paragraphs:
+            for sentence in paragraph.sentences:
+                text = sentence.text.strip()
+                if not text:
+                    continue
+                total_sentences += 1
+                if sentence.is_factual:
+                    has_factual = True
+                if _MARKER_RE.search(text):
+                    marker_count += 1
+
+    if total_sentences == 0:
+        blockers.append("isi laporan masih kosong (belum ada satu kalimat pun)")
+    if marker_count:
+        blockers.append(
+            f"{marker_count} paragraf masih memuat penanda [TABEL/GAMBAR/FOTO] yang belum diisi"
+        )
+    empty_titles = _empty_section_titles(sections)
+    if empty_titles:
+        preview = ", ".join(empty_titles[:3])
+        lebih = f" (+{len(empty_titles) - 3} lagi)" if len(empty_titles) > 3 else ""
+        blockers.append(f"{len(empty_titles)} bagian wajib masih kosong: {preview}{lebih}")
+    if has_factual and references is not None and not references:
+        blockers.append("daftar pustaka kosong padahal ada klaim faktual")
+    return blockers
 
 
 def run_checks(
@@ -211,7 +266,11 @@ def find_issues(
     has_factual = any(item.sentence.is_factual for item in statuses)
     if not uncited and has_factual and not references_for(sources, cited):
         issues.append(
-            PreflightIssue("citations", "Daftar pustaka akan kosong padahal ada kalimat faktual.")
+            PreflightIssue(
+                "citations",
+                "Daftar pustaka akan kosong padahal ada kalimat faktual. "
+                "Ekspor akan ditolak sampai daftar pustaka terisi.",
+            )
         )
     empty_titles = _empty_section_titles(sections)
     if empty_titles:
@@ -220,7 +279,8 @@ def find_issues(
         issues.append(
             PreflightIssue(
                 "empty_sections",
-                f"{len(empty_titles)} bagian masih kosong: {preview}{lebih}.",
+                f"{len(empty_titles)} bagian masih kosong: {preview}{lebih}. "
+                "Ekspor akan ditolak sampai bagian ini diisi atau dihapus.",
             )
         )
     mojibake = _mojibake_names(sources)
@@ -259,6 +319,9 @@ def fix_mojibake(
             container=repair_mojibake(source.container),
             doi=source.doi,
             url=source.url,
+            volume=source.volume,
+            issue=source.issue,
+            pages=source.pages,
         )
         for source in sources
     ]

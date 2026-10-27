@@ -3,31 +3,33 @@
 @tailwind utilities;
 
 :root {
-  --canvas: #fff8de;
-  --surface: #fff8de;
+  --canvas: #EEF5F5;
+  --surface: #ffffff;
   --paper: #ffffff;
-  --surface-muted: #fff2c6;
-  --ink: #101827;
-  --ink-soft: #2f405d;
-  --ink-muted: #60708a;
-  --line: #c6d4ec;
-  --line-strong: #aac4f5;
-  --accent: #8ca9ff;
-  --accent-dark: #3d5daf;
-  --accent-pale: #dce6ff;
-  --warning: #6e5a24;
-  --warning-pale: #fff2c6;
-  --danger: #7a404a;
-  --danger-pale: #f4dce0;
-  --danger-line: #d7a8b3;
-  --sidebar-bg: #101827;
-  --sidebar-line: #263957;
-  --sidebar-text: #cbd7ee;
-  --sidebar-muted: #8ea3c7;
-  --sidebar-hover: #1b2b47;
-  --sidebar-width: 260px;
-  --focus-ring: rgba(140, 169, 255, .44);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --surface-muted: #F8FAFA;
+  --ink: #1E2530;
+  --ink-soft: #334155;
+  --ink-muted: #64748B;
+  --line: #E2E8F0;
+  --line-strong: #CBD5E1;
+  --accent: #39C5BB;
+  --accent-dark: #219E95;
+  --accent-pale: #E4F9F8;
+  --accent-pink: #FF5B88;
+  --accent-purple: #8A98E8;
+  --warning: #B45309;
+  --warning-pale: #FEF3C7;
+  --danger: #BE123C;
+  --danger-pale: #FFE4E6;
+  --danger-line: #FDA4AF;
+  --sidebar-bg: #ffffff;
+  --sidebar-line: #E2E8F0;
+  --sidebar-text: #1E2530;
+  --sidebar-muted: #64748B;
+  --sidebar-hover: #E4F9F8;
+  --sidebar-width: 76px;
+  --focus-ring: rgba(57, 197, 187, .35);
+  font-family: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
@@ -228,12 +230,7 @@
 
 /* Shared surface treatment for legacy tab components. */
 .app-workspace input, .app-workspace textarea, .app-workspace select { color: var(--ink); }
-.app-workspace input, .app-workspace textarea, .app-workspace select {
-  border-radius: 3px !important;
-  border-color: var(--line) !important;
-  background: var(--surface) !important;
-  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
-}
+
 .app-workspace input:focus-visible, .app-workspace textarea:focus-visible, .app-workspace select:focus-visible,
 .app-workspace button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .app-workspace input:focus, .app-workspace textarea:focus, .app-workspace select:focus {
@@ -249,7 +246,7 @@
 .app-workspace button:active:not(:disabled), .app-workspace [role="button"]:active {
   transform: translateY(0);
 }
-.app-workspace .bg-white { background-color: var(--surface); }
+
 .app-workspace .bg-slate-50, .app-workspace .bg-slate-100 { background-color: var(--surface-muted); }
 .app-workspace .border-slate-100, .app-workspace .border-slate-200, .app-workspace .border-slate-200\/80 { border-color: var(--line); }
 .app-workspace .text-slate-900, .app-workspace .text-slate-800 { color: var(--ink); }
@@ -262,15 +259,15 @@
 .app-workspace .border-brand-200, .app-workspace .border-brand-500 { border-color: #8ca9ff; }
 .app-workspace .ring-brand-500\/20:focus { --tw-ring-color: var(--focus-ring); }
 .app-workspace .shadow-brand-600\/20 { --tw-shadow-color: rgba(61, 93, 175, .2); }
-.app-workspace .rounded-2xl { border-radius: 8px !important; }
-.app-workspace .rounded-xl { border-radius: 5px !important; }
-.app-workspace .rounded-lg { border-radius: 3px !important; }
+
+
+
 .app-workspace .rounded-full { border-radius: 999px !important; }
 .app-workspace .shadow-sm { box-shadow: 0 1px 0 rgba(23, 23, 23, .12), 0 4px 12px rgba(23, 23, 23, .05); }
 .app-workspace .shadow-lg, .app-workspace .shadow-xl, .app-workspace .shadow-2xl { box-shadow: 0 12px 24px rgba(23, 23, 23, .13); }
 .app-workspace .font-sans { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 .app-workspace .bg-white\/95 { background-color: rgba(252, 250, 245, .96); }
-.app-workspace .backdrop-blur-md { backdrop-filter: none; }
+
 .app-workspace h1, .app-workspace h2, .app-workspace h3 { letter-spacing: -.02em; }
 .app-workspace h1, .app-workspace h2 { font-family: Georgia, "Times New Roman", serif; }
 .app-workspace h3 { font-weight: 700; }
@@ -558,4 +555,52 @@
   .model-state { max-width: 150px; }
   .app-header-status { gap: 6px; }
   .model-state { max-width: 132px; }
+}
+
+
+/* Hatsune Miku Design System Utilities */
+.miku-soft-shadow {
+  box-shadow: 0 10px 30px -4px rgba(57, 197, 187, 0.15), 0 4px 12px -2px rgba(30, 37, 48, 0.04);
+}
+.miku-paper-shadow {
+  box-shadow: 0 12px 35px -6px rgba(30, 37, 48, 0.12), 0 2px 8px -1px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.03);
+}
+.custom-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2339C5BB' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  padding-right: 42px;
+}
+.sentence-item {
+  border-left: 3.5px solid transparent;
+  padding-left: 6px;
+  margin-left: -6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  display: inline;
+}
+.sentence-item[data-status="cocok"] {
+  border-left-color: #39C5BB;
+}
+.sentence-item[data-status="perlu_ditinjau"] {
+  border-left-color: #F59E0B;
+  background-color: rgba(245, 158, 11, 0.06);
+}
+.sentence-item:hover {
+  background-color: rgba(57, 197, 187, 0.12);
+}
+.sentence-item.is-selected {
+  background-color: rgba(57, 197, 187, 0.22) !important;
+  border-left-color: #219E95 !important;
+  outline: 1px dashed #39C5BB;
+}
+.font-serif-doc {
+  font-family: 'Times New Roman', Times, Georgia, serif;
+}
+.font-mono-meta {
+  font-family: 'JetBrains Mono', Consolas, monospace;
 }

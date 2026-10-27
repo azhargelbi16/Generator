@@ -13,7 +13,10 @@ _XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def clean_text(text: str) -> str:
-    """Buang karakter kontrol yang ditolak XML (NULL, 0x0B, 0x0C, dan sejenisnya)."""
+    """Buang karakter kontrol yang ditolak XML dan karakter glyph rusak."""
+    text = re.sub(r"(\w+s)[\ufffd](\s|$)", r"\1'\2", text, flags=re.I)
+    text = re.sub(r"(\w+)[\ufffd](s|d|t|re|ve|ll|m)\b", r"\1'\2", text, flags=re.I)
+    text = text.replace("\ufffd", "").replace("", "")
     return _XML_ILLEGAL.sub("", text)
 
 

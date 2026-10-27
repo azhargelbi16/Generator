@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { DraftManagerModal } from './DraftManagerModal';
 import { 
   FilePlus, 
-  Globe, 
   FileText, 
   Sparkles, 
   Trash2, 
@@ -15,11 +15,12 @@ import {
   CheckCircle2,
   AlertCircle,
   FolderOpen,
-  Search,
-  Hash,
   Clock,
   RotateCcw,
-  Loader2
+  Loader2,
+  Search,
+  BookmarkPlus,
+  X
 } from 'lucide-react';
 import { 
   api, 
@@ -37,6 +38,7 @@ interface TabLaporanProps {
   onGenerateComplete: () => void;
   onGeneratingChange?: (generating: boolean) => void;
   isActive?: boolean;
+  onNavigateToReview?: () => void;
 }
 
 /**
@@ -77,7 +79,7 @@ const describeSourceContent = (
   };
 };
 
-export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGeneratingChange, isActive = false }) => {
+export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGeneratingChange, isActive = false, onNavigateToReview }) => {
   const streamEndRef = React.useRef<HTMLDivElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const onGenerateCompleteRef = React.useRef(onGenerateComplete);
@@ -99,29 +101,22 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   const [selectedMatkul, setSelectedMatkul] = useState('');
   const [selectedLogoPath, setSelectedLogoPath] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState('B');
+  const [selectedVariant, setSelectedVariant] = useState('D');
   const [outline, setOutline] = useState<string[]>([]);
 
   // Modals & States
-  const [webUrlModal, setWebUrlModal] = useState(false);
-  const [webUrlInput, setWebUrlInput] = useState('');
   const [manualTextModal, setManualTextModal] = useState(false);
   const [manualTextInput, setManualTextInput] = useState('');
   const [loadingSource, setLoadingSource] = useState(false);
   const [suggestingOutline, setSuggestingOutline] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
 
-  // DOI Resolver State
-  const [doiModal, setDoiModal] = useState(false);
-  const [doiInput, setDoiInput] = useState('');
-  const [resolvingDoi, setResolvingDoi] = useState(false);
-
   // Project & Draft Manager State
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [savedDrafts, setSavedDrafts] = useState<SavedDraftItem[]>([]);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [loadingProjects, setLoadingProjects] = useState(false);
-
+    const [loadingProjects, setLoadingProjects] = useState(false);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+    
   // Generation Live State
   const [isGenerating, setIsGenerating] = useState(false);
   const [genProgress, setGenProgress] = useState({ batch: 1, total: 1 });
@@ -132,7 +127,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     selectedMatkul: '',
     selectedLogoPath: '',
     selectedTemplateId: null as number | null,
-    selectedVariant: 'B',
+    selectedVariant: 'D',
     outline: [] as string[],
     sources: [] as SourceRecord[],
   });
@@ -159,20 +154,18 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   }, [isGenerating, onGeneratingChange]);
 
   useEffect(() => {
-    const modalOpen = webUrlModal || manualTextModal || doiModal || projectModalOpen;
+    const modalOpen = manualTextModal || projectModalOpen;
     if (!modalOpen) return;
 
     const closeModal = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setWebUrlModal(false);
       setManualTextModal(false);
-      setDoiModal(false);
       setProjectModalOpen(false);
     };
 
     window.addEventListener('keydown', closeModal);
     return () => window.removeEventListener('keydown', closeModal);
-  }, [doiModal, manualTextModal, projectModalOpen, webUrlModal]);
+  }, [manualTextModal, projectModalOpen]);
 
   useEffect(() => {
     loadInitialData();
@@ -338,8 +331,8 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       }
       if (v) setVariants(v);
 
-      const currentVar = (draft?.fields?.VARIANT || 'B').toUpperCase();
-      const normalizedVar = ['A', 'B', 'C'].includes(currentVar) ? currentVar : (currentVar === 'BEBAS' ? 'bebas' : 'B');
+      const currentVar = (draft?.fields?.VARIANT || 'D').toUpperCase();
+      const normalizedVar = ['A', 'B', 'C', 'D'].includes(currentVar) ? currentVar : (currentVar === 'BEBAS' ? 'bebas' : 'D');
       setSelectedVariant(normalizedVar);
 
       if (draft?.has_draft) {
@@ -358,7 +351,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
           activeOutline = draft.sections.map((s) => s.title).filter((t: string) => t && t.trim().length > 0);
         }
         if (activeOutline.length === 0 && v) {
-          const matchedV = v.find((x) => x.code.toUpperCase() === normalizedVar.toUpperCase()) || v.find((x) => x.code.toUpperCase() === 'B');
+          const matchedV = v.find((x) => x.code.toUpperCase() === normalizedVar.toUpperCase()) || v.find((x) => x.code.toUpperCase() === 'D');
           if (matchedV && matchedV.outline_titles && matchedV.outline_titles.length > 0) {
             activeOutline = matchedV.outline_titles;
           }
@@ -366,11 +359,11 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         if (activeOutline.length > 0) {
           setOutline(activeOutline);
         } else if (v) {
-          const varB = v.find((x) => x.code.toUpperCase() === 'B');
-          if (varB && varB.outline_titles) setOutline(varB.outline_titles);
+          const varDefault = v.find((x) => x.code.toUpperCase() === 'D');
+          if (varDefault && varDefault.outline_titles) setOutline(varDefault.outline_titles);
         }
       } else if (v) {
-        const matched = v.find((x) => x.code.toUpperCase() === normalizedVar.toUpperCase()) || v.find((x) => x.code.toUpperCase() === 'B');
+        const matched = v.find((x) => x.code.toUpperCase() === normalizedVar.toUpperCase()) || v.find((x) => x.code.toUpperCase() === 'D');
         if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
           setOutline(matched.outline_titles);
         }
@@ -397,7 +390,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   };
 
   const handleResetOutline = () => {
-    const matched = variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) || variants.find((x) => x.code.toUpperCase() === 'B');
+    const matched = variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) || variants.find((x) => x.code.toUpperCase() === 'D');
     if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
       setOutline(matched.outline_titles);
       toast.success(`Outline di-reset ke struktur baku ${matched.name}.`);
@@ -420,23 +413,33 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   };
 
   // Add Sources Handlers
-  const appendSourceRecord = (record: SourceRecord, successMsg: string) => {
-    // Peringatan duplek: PDF sama yang dipilih dua kali diterima senyap
-    // sebelumnya dan menggandakan bobot sumber saat generate (F7).
+  const appendSourceRecords = (newRecords: SourceRecord[], successMsg?: string) => {
+    if (newRecords.length === 0) return;
     const norm = (s?: string) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 300).toLowerCase();
     const keyOf = (s: SourceRecord) => norm(s.text) || `${norm(s.title)}|${s.year || ''}`;
-    const incomingKey = keyOf(record);
-    const duplicate = sources.some((s) => {
-      if (incomingKey && keyOf(s) === incomingKey) return true;
-      const t1 = norm(s.title);
-      return !!t1 && t1 === norm(record.title) && (s.year || '') === (record.year || '');
-    });
-    setSources((prev) => [...prev, record]);
-    if (duplicate) {
-      toast.info(`⚠ Sumber dengan isi/judul yang sama sudah ada di daftar. Dipecah dua kali akan memperkuat bobotnya saat generate — hapus salah satu bila tidak disengaja. ${successMsg}`);
-    } else if (successMsg) {
+
+    let duplicateFound = false;
+    const currentKeys = new Set(sources.map(keyOf));
+    for (const rec of newRecords) {
+      const k = keyOf(rec);
+      if (k && currentKeys.has(k)) {
+        duplicateFound = true;
+      }
+      if (k) currentKeys.add(k);
+    }
+
+    setSources((prev) => [...prev, ...newRecords]);
+
+    if (duplicateFound) {
+      toast.info(`⚠ Ada sumber dengan isi/judul serupa di daftar. Sumber ganda memperkuat bobot saat generate — hapus bila tidak disengaja.`);
+    }
+    if (successMsg) {
       toast.success(successMsg);
     }
+  };
+
+  const appendSourceRecord = (record: SourceRecord, successMsg: string) => {
+    appendSourceRecords([record], successMsg);
   };
 
   const handleAddPdf = async () => {
@@ -444,9 +447,26 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     toast.info('Membuka dialog dan memproses berkas PDF...');
     try {
       const res = await api.pickPdfSource();
-      if (res?.success && res.record) {
-        appendSourceRecord(res.record, `Sumber PDF "${res.record.title || 'Dokumen'}" berhasil ditambahkan.`);
-      } else if (res?.error) {
+      if (res?.cancelled) {
+        return;
+      }
+      if (res?.warning) {
+        toast.info(res.warning);
+      }
+      const incoming: SourceRecord[] = res?.records && res.records.length > 0
+        ? res.records
+        : (res?.record ? [res.record] : []);
+
+      if (incoming.length > 0) {
+        const msg = incoming.length === 1
+          ? `Sumber PDF "${incoming[0].title || 'Dokumen'}" berhasil ditambahkan.`
+          : `${incoming.length} berkas PDF referensi berhasil ditambahkan sekaligus.`;
+        appendSourceRecords(incoming, msg);
+      }
+
+      if (res?.errors && res.errors.length > 0) {
+        toast.error(`Beberapa berkas gagal dibaca: ${res.errors.join('; ')}`);
+      } else if (!incoming.length && res?.error) {
         toast.error(res.error);
       }
     } catch (err: any) {
@@ -477,23 +497,6 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     }
   };
 
-  const handleAddWeb = async () => {
-    if (!webUrlInput.trim()) return;
-    setLoadingSource(true);
-    try {
-      const res = await api.addWebSource(webUrlInput.trim());
-      if (res?.success && res.record) {
-        appendSourceRecord(res.record, 'Sumber Web berhasil ditambahkan.');
-        setWebUrlModal(false);
-        setWebUrlInput('');
-      } else if (res?.error) {
-        toast.error(res.error);
-      }
-    } finally {
-      setLoadingSource(false);
-    }
-  };
-
   const handleAddManual = async () => {
     if (!manualTextInput.trim()) return;
     setLoadingSource(true);
@@ -511,70 +514,16 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     }
   };
 
-  // DOI Resolver Handler
-  const handleResolveDoi = async () => {
-    if (!doiInput.trim()) return;
-    setResolvingDoi(true);
-    try {
-      const res = await api.resolveDoiSource(doiInput.trim());
-      if (res?.success && res.record) {
-        appendSourceRecord(res.record, `Berhasil menambahkan referensi: ${res.record.title}`);
-        if ((res.record.text?.length || 0) < 250) {
-          toast.info(
-            '⚠ Sumber DOI ini hanya berisi metadata (tanpa teks yang bisa dikutip). ' +
-            'Unggah PDF jurnal yang sama lewat tombol PDF/OCR agar AI mengutip isi jurnal — ' +
-            'metadata DOI tetap terpakai untuk daftar pustaka.'
-          );
-        }
-        setDoiModal(false);
-        setDoiInput('');
-      } else {
-        toast.error(res?.error || 'Gagal menyelesaikan DOI.');
-      }
-    } finally {
-      setResolvingDoi(false);
-    }
-  };
-
   // Multi-Project Handlers
   const handleOpenProjectModal = async () => {
     setLoadingProjects(true);
     setProjectModalOpen(true);
+    setSelectedDraftIds([]);
     try {
       const list = await api.listSavedDrafts();
       if (list) setSavedDrafts(list);
     } finally {
       setLoadingProjects(false);
-    }
-  };
-
-  const handleSaveNamedProject = async () => {
-    if (!newProjectName.trim()) {
-      toast.error('Masukkan nama proyek terlebih dahulu.');
-      return;
-    }
-    const state = {
-      fields: {
-        JUDUL: topic,
-        DOSEN: selectedDosen,
-        MATA_KULIAH: selectedMatkul,
-        LOGO_PATH: selectedLogoPath,
-        TEMPLATE_ID: selectedTemplateId,
-        VARIANT: selectedVariant,
-        OUTLINE: outline,
-      },
-      sources,
-      sections: [],
-      done: [],
-    };
-    const res = await api.saveNamedDraft(newProjectName.trim(), state);
-    if (res?.success) {
-      toast.success(`Proyek '${newProjectName}' berhasil disimpan!`);
-      setNewProjectName('');
-      const list = await api.listSavedDrafts();
-      if (list) setSavedDrafts(list);
-    } else {
-      toast.error(res?.error || 'Gagal menyimpan proyek.');
     }
   };
 
@@ -596,16 +545,14 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
       }
       setProjectModalOpen(false);
       toast.success(`Proyek '${d.fields?.JUDUL || draftId}' berhasil dimuat.`);
+
+      // Navigasi cerdas: Jika draf yang dibuka telah berisi naskah laporan, buka langsung di Tab Review!
+      if (d.sections && Array.isArray(d.sections) && d.sections.length > 0 && onNavigateToReview) {
+        onNavigateToReview();
+      }
     } else {
       toast.error(res?.error || 'Gagal memuat proyek.');
     }
-  };
-
-  const handleDeleteProject = async (draftId: string) => {
-    await api.deleteNamedDraft(draftId);
-    const list = await api.listSavedDrafts();
-    if (list) setSavedDrafts(list);
-    toast.success('Draf proyek berhasil dihapus.');
   };
 
   const handleNewBlankProject = async () => {
@@ -613,8 +560,10 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     setTopic('');
     setSources([]);
     setSelectedSourceIdx(null);
-    const varB = variants.find((x) => x.code === 'b');
-    if (varB) setOutline(varB.outline_titles);
+    const matchedVariant =
+      variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) ||
+      variants.find((x) => x.code.toUpperCase() === 'D');
+    if (matchedVariant) setOutline(matchedVariant.outline_titles);
     setProjectModalOpen(false);
     toast.info('Memulai lembar kerja proyek baru.');
   };
@@ -669,7 +618,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
     }
     let effectiveOutline = outline.map((x) => x.trim()).filter(Boolean);
     if (effectiveOutline.length === 0) {
-      const matched = variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) || variants.find((x) => x.code.toUpperCase() === 'B');
+      const matched = variants.find((x) => x.code.toUpperCase() === selectedVariant.toUpperCase()) || variants.find((x) => x.code.toUpperCase() === 'D');
       if (matched && matched.outline_titles && matched.outline_titles.length > 0) {
         effectiveOutline = matched.outline_titles;
       } else {
@@ -863,42 +812,24 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               </div>
 
               {/* Source action buttons */}
-              <div className="grid grid-cols-4 gap-1.5 mb-4 source-action-grid">
+              <div className="grid grid-cols-2 gap-2 mb-4 source-action-grid">
                 <button
                   onClick={handleAddPdf}
                   disabled={loadingSource}
-                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-secondary"
-                  title="Unggah berkas PDF native atau scan OCR"
+                  className="p-3 rounded-xl border text-xs font-semibold flex items-center justify-center space-x-2 transition text-center ui-action-secondary shadow-sm hover:shadow"
+                  title="Unggah berkas PDF naskah lengkap (native atau scan OCR)"
                 >
-                  <FilePlus className="w-4 h-4 text-brand-600" />
-                  <span>PDF/OCR</span>
-                </button>
-                <button
-                  onClick={() => setDoiModal(true)}
-                  disabled={loadingSource}
-                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-ai"
-                  title="Cari metadata resmi via DOI CrossRef"
-                >
-                  <Hash className="w-4 h-4" />
-                  <span>Cari DOI</span>
-                </button>
-                <button
-                  onClick={() => setWebUrlModal(true)}
-                  disabled={loadingSource}
-                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-secondary"
-                  title="Ambil teks dari link web atau jurnal"
-                >
-                  <Globe className="w-4 h-4" />
-                  <span>Tautan Web</span>
+                  <FilePlus className="w-4 h-4 text-brand-600 shrink-0" />
+                  <span>PDF / OCR</span>
                 </button>
                 <button
                   onClick={() => setManualTextModal(true)}
                   disabled={loadingSource}
-                  className="p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition text-center ui-action-secondary"
-                  title="Tempel teks referensi langsung"
+                  className="p-3 rounded-xl border text-xs font-semibold flex items-center justify-center space-x-2 transition text-center ui-action-secondary shadow-sm hover:shadow"
+                  title="Tempel atau ketik teks naskah referensi langsung"
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Manual</span>
+                  <FileText className="w-4 h-4 text-brand-600 shrink-0" />
+                  <span>Teks Manual</span>
                 </button>
               </div>
 
@@ -913,7 +844,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                 {sources.length === 0 ? (
                   <div className="text-center py-12 text-slate-400 text-xs px-4">
                     Belum ada sumber referensi.<br />
-                    Gunakan tombol <span className="font-semibold text-slate-600">PDF/OCR</span>, <span className="font-semibold text-slate-600">Cari DOI</span>, atau <span className="font-semibold text-slate-600">Manual</span> di atas untuk menambahkan naskah lengkap artikel ilmiah Anda.
+                    Gunakan tombol <span className="font-semibold text-slate-600">PDF/OCR</span> atau <span className="font-semibold text-slate-600">Teks Manual</span> di atas untuk menambahkan naskah lengkap artikel ilmiah Anda.
                   </div>
                 ) : (
                   sources.map((s, idx) => {
@@ -1069,17 +1000,64 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
           {/* Right Column: Pengaturan Laporan & Outline */}
           <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto space-y-6 report-composer">
-            <div className="studio-hero">
-              <div className="studio-hero-copy">
-                <div className="studio-eyebrow"><span>GENERATOR LAPORAN</span><span>01 / 05</span></div>
-                <h1>Susun laporan dari sumber yang bisa ditinjau.</h1>
-                <p>Mulai dari bahan yang sudah Anda punya. Atur brief, bentuk outline, lalu biarkan AI menyusun teks yang tetap bisa diperiksa.</p>
+            {/* PROPORTIONAL HATSUNE MIKU HERO BANNER */}
+            <div className="rounded-[24px] px-7 py-5 relative overflow-hidden shadow-md flex items-center justify-between min-h-[145px]" style={{ background: 'linear-gradient(135deg, #5AD5CD 0%, #39C5BB 50%, #209C93 100%)' }}>
+              {/* Left Text Content */}
+              <div className="relative z-10 max-w-lg text-slate-950 space-y-1.5">
+                <div className="flex items-center space-x-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-white/90 text-slate-900 font-extrabold text-xs font-mono tracking-wider shadow-2xs">
+                    初音ミク × GENERATOR LAPORAN
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#FF5B88] text-white font-extrabold text-xs shadow-2xs">
+                    APA 7th
+                  </span>
+                </div>
+                <h1 className="text-xl font-black text-slate-950 tracking-tight leading-tight">
+                  Susun Laporan Ilmiah Berbasis Jurnal
+                </h1>
+                <p className="text-xs text-slate-950/90 font-medium leading-relaxed">
+                  Sintesis literatur otomatis dengan verifikasi kutipan APA 7 dan keluaran DOCX rapi sesuai format baku Dikti.
+                </p>
+                <div className="flex items-center space-x-2 pt-0.5 text-xs font-mono font-extrabold">
+                  <span className="px-3 py-0.5 rounded-full bg-white text-slate-900 shadow-2xs">VARIAN {selectedVariant.toUpperCase()} (SINTESIS)</span>
+                  <span className="px-3 py-0.5 rounded-full bg-black/20 text-white backdrop-blur-xs">{sources.length} SUMBER • {outline.length} BAB</span>
+                </div>
               </div>
-              <div className="studio-hero-meta" aria-label="Ringkasan pekerjaan">
-                <div><span className="studio-meta-label">SUMBER</span><strong>{sources.length}</strong></div>
-                <div><span className="studio-meta-label">OUTLINE</span><strong>{outline.length}</strong></div>
-                <div><span className="studio-meta-label">MODE</span><strong>{selectedVariant.toUpperCase()}</strong></div>
+
+              {/* Right Character Graphic (Transparent Miku, 0 grey hair halos) */}
+              <div className="relative z-10 w-[240px] h-[160px] -mb-5 flex items-end justify-end shrink-0 pointer-events-none">
+                <img
+                  src="/assets/miku_hero.png"
+                  alt="Hatsune Miku"
+                  className="h-full object-contain filter drop-shadow-md"
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
               </div>
+            </div>
+
+            {/* Student Identity Summary Pill (Links to Tab 03 Profil & Data) */}
+            <div className="p-3.5 rounded-2xl bg-[#E4F9F8]/60 border border-teal-200/70 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-full bg-[#39C5BB] text-white flex items-center justify-center font-bold text-base shrink-0 shadow-xs">
+                  🎓
+                </div>
+                <div className="text-xs">
+                  <span className="text-slate-500 block font-mono">IDENTITAS PENULIS LAPORAN:</span>
+                  <span className="font-extrabold text-slate-900">
+                    Data Mahasiswa & Dosen Tersinkronisasi
+                  </span>
+                  <span className="text-teal-800 font-mono"> (APA 7 Ready)</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('switch-tab-request', { detail: { tab: 'data' } }));
+                }}
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-[#219E95] border border-teal-200 hover:bg-[#E4F9F8] transition shadow-2xs shrink-0 cursor-pointer"
+              >
+                ✏️ Kelola di Tab Data
+              </button>
             </div>
 
             <div className="flex items-center justify-between report-form-header">
@@ -1212,6 +1190,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
                          c === 'B' ? 'Varian B (Baku): Makalah Kuliah Standar Dikti (4 Bab)' :
                          c === 'A' ? 'Varian A: Makalah Tinjauan / Komparatif (Multi-Topik)' :
                          c === 'C' ? 'Varian C: Laporan Praktikum Laboratorium' :
+                         c === 'D' ? 'Varian D: Tinjauan Pustaka (Sintesis Tanpa Bab Hasil)' :
                          'Format Bebas: Outline Kustom Mandiri';
                       return (
                         <option key={v.code} value={v.code}>
@@ -1226,7 +1205,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               {/* Dosen & Matkul Selection */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                 <div>
-                  <label htmlFor="brief-dosen" className="block text-xs font-semibold text-slate-600 mb-1">Dosen Pembimbing</label>
+                  <label htmlFor="brief-dosen" className="block text-xs font-semibold text-slate-600 mb-1">Dosen Pengampu</label>
                   <select
                     id="brief-dosen"
                     value={selectedDosen}
@@ -1261,19 +1240,32 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
                 <div>
                   <label htmlFor="brief-logo" className="block text-xs font-semibold text-slate-600 mb-1">Logo Kampus</label>
-                  <select
-                    id="brief-logo"
-                    value={selectedLogoPath}
-                    onChange={(e) => setSelectedLogoPath(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                  >
-                    <option value="">-- Pilih Logo --</option>
-                    {logoList.map((l) => (
-                      <option key={l.id} value={l.path}>
-                        {l.nama}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const selectedLogo = logoList.find((l) => l.path === selectedLogoPath);
+                      if (selectedLogo?.data_url) {
+                        return (
+                          <div className="w-8 h-8 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center shrink-0 shadow-xs" title={`Logo: ${selectedLogo.nama}`}>
+                            <img src={selectedLogo.data_url} alt={selectedLogo.nama} className="max-w-full max-h-full object-contain" />
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    <select
+                      id="brief-logo"
+                      value={selectedLogoPath}
+                      onChange={(e) => setSelectedLogoPath(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    >
+                      <option value="">-- Pilih Logo --</option>
+                      {logoList.map((l) => (
+                        <option key={l.id} value={l.path}>
+                          {l.nama} {!l.exists && '(Berkas Tidak Ditemukan)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1350,48 +1342,6 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         </div>
       )}
 
-      {/* Web URL Modal */}
-      {webUrlModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" role="presentation" onClick={() => setWebUrlModal(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200" role="dialog" aria-modal="true" aria-labelledby="web-url-dialog-title" onClick={(event) => event.stopPropagation()}>
-            <h3 id="web-url-dialog-title" className="text-base font-bold text-slate-800 mb-2">Tambah Tautan Web</h3>
-            <p className="text-xs text-slate-500 mb-3">
-              Mendukung tautan halaman artikel ilmiah (ArXiv, OJS kampus, Neliti) maupun berkas PDF langsung.
-            </p>
-            <div className="mb-4 p-2.5 ui-info-surface border rounded-xl text-[11px] space-y-1">
-              <p><strong>Catatan pembacaan tautan:</strong></p>
-              <ul className="list-disc list-inside space-y-0.5">
-                <li>Jika tersedia file PDF Open Access, sistem otomatis mengunduh <strong>naskah lengkap</strong>.</li>
-                <li>Jika situs jurnal mengunci PDF dengan paywall/login, sistem hanya akan membaca <strong>abstrak & metadata</strong>.</li>
-              </ul>
-            </div>
-            <input
-              type="url"
-              value={webUrlInput}
-              onChange={(e) => setWebUrlInput(e.target.value)}
-              placeholder="https://..."
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs mb-4 font-mono"
-              autoFocus
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setWebUrlModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold"
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleAddWeb}
-                disabled={loadingSource || !webUrlInput.trim()}
-                className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5"
-              >
-                <span>{loadingSource ? 'Mengambil...' : 'Tambah Sumber'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Manual Text Modal */}
       {manualTextModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50" role="presentation" onClick={() => setManualTextModal(false)}>
@@ -1423,171 +1373,39 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
           </div>
         </div>
       )}
-      {/* DOI Resolver Modal */}
-      {doiModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn" role="presentation" onClick={() => setDoiModal(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200" role="dialog" aria-modal="true" aria-labelledby="doi-dialog-title" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center space-x-3 mb-3">
-              <div className="w-9 h-9 rounded-xl ui-info-surface border flex items-center justify-center">
-                <Hash className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 id="doi-dialog-title" className="text-base font-bold text-slate-800">Cari Referensi via DOI (CrossRef)</h3>
-                <p className="text-xs text-slate-500">Metadata bibliografi APA 7 diambil langsung dan resmi dari CrossRef.</p>
-              </div>
-            </div>
-            <div className="mb-4 p-2.5 ui-info-surface border rounded-xl text-[11px] space-y-1">
-              <p><strong>Contoh input yang didukung:</strong></p>
-              <ul className="list-disc list-inside space-y-0.5">
-                <li><code>10.1016/j.biortech.2020.123456</code></li>
-                <li><code>https://doi.org/10.1038/s41586-020-2649-2</code></li>
-              </ul>
-            </div>
-            <input
-              type="text"
-              value={doiInput}
-              onChange={(e) => setDoiInput(e.target.value)}
-              placeholder="10.xxxx/..."
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs mb-4 font-mono"
-              autoFocus
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDoiModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleResolveDoi}
-                disabled={resolvingDoi || !doiInput.trim()}
-                className="px-5 py-2 ui-action-primary rounded-xl text-xs font-semibold flex items-center space-x-1.5"
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span>{resolvingDoi ? 'Menghubungi CrossRef...' : 'Cari & Tambah'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Multi-Project & Draft Manager Modal */}
-      {projectModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn" role="presentation" onClick={() => setProjectModalOpen(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col justify-between" role="dialog" aria-modal="true" aria-labelledby="project-dialog-title" onClick={(event) => event.stopPropagation()}>
-            <div>
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-700">
-                    <FolderOpen className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 id="project-dialog-title" className="text-base font-bold text-slate-800">Manajemen Draf & Proyek Laporan</h3>
-                    <p className="text-xs text-slate-500">Buka kembali pekerjaan sebelumnya atau simpan draf dengan nama khusus.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setProjectModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* Simpan Proyek Saat Ini Form */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="Beri nama proyek, mis: Tugas Akhir Pertanian Presisi V1"
-                  className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveNamedProject}
-                  className="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shrink-0"
-                >
-                  Simpan Proyek
-                </button>
-              </div>
-
-              {/* Saved Drafts List */}
-              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                {loadingProjects ? (
-                  <div className="text-center py-12 text-xs text-slate-400">Memuat daftar draf proyek...</div>
-                ) : savedDrafts.length === 0 ? (
-                  <div className="text-center py-12 text-xs text-slate-400">Belum ada draf tersimpan.</div>
-                ) : (
-                  savedDrafts.map((d) => (
-                    <div
-                      key={d.draft_id}
-                      className={`p-3 rounded-xl border flex items-center justify-between text-xs transition ${
-                        d.is_active ? 'bg-brand-50/60 border-brand-200' : 'bg-white border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex-1 pr-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-slate-800 truncate">{d.title}</span>
-                          {d.is_active && (
-                            <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-brand-100 text-brand-700">
-                              Aktif Sekarang
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          {d.sources_count} sumber • {d.sentence_count} kalimat terverifikasi • ID: <code>{d.draft_id}</code>
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2 shrink-0">
-                        {!d.is_active && (
-                          <button
-                            type="button"
-                            onClick={() => handleLoadProject(d.draft_id)}
-                            className="px-3 py-1 ui-action-primary rounded-lg text-xs font-semibold shadow-xs"
-                          >
-                            Buka
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteProject(d.draft_id)}
-                           className="source-card-delete text-slate-400 p-2"
-                           aria-label={`Hapus draf ${d.title}`}
-                          title="Hapus draf ini"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t border-slate-100 mt-4">
-              <button
-                type="button"
-                onClick={handleNewBlankProject}
-                className="px-3 py-1.5 ui-status-danger border rounded-lg text-xs font-semibold flex items-center space-x-1"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Mulai Lembar Kerja Kosong Baru</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProjectModalOpen(false)}
-                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DraftManagerModal
+        isOpen={projectModalOpen}
+        onClose={() => setProjectModalOpen(false)}
+        onSelectDraft={handleLoadProject}
+        onNewBlankProject={handleNewBlankProject}
+        canSaveCurrent={true}
+        onSaveNamedProject={async (name: string) => {
+          const state = {
+            fields: {
+              JUDUL: topic,
+              DOSEN: selectedDosen,
+              MATA_KULIAH: selectedMatkul,
+              LOGO_PATH: selectedLogoPath,
+              TEMPLATE_ID: selectedTemplateId,
+              VARIANT: selectedVariant,
+              OUTLINE: outline,
+            },
+            sources,
+            sections: [],
+            done: [],
+          };
+          const res = await api.saveNamedDraft(name, state);
+          if (res?.success) {
+            toast.success(`Proyek '${name}' berhasil disimpan!`);
+            return true;
+          } else {
+            toast.error(res?.error || 'Gagal menyimpan proyek.');
+            return false;
+          }
+        }}
+      />
 
     </div>
   );

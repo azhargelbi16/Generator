@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { DraftManagerModal } from './DraftManagerModal';
 import { 
+  FileText,
   CheckCircle2, 
   AlertCircle, 
   HelpCircle, 
@@ -36,6 +38,7 @@ import { normalizeReviewSections } from '../lib/reviewSections';
 interface TabReviewProps {
   onExportSuccess: (path: string) => void;
   isActive?: boolean;
+  onNavigateToLaporan?: () => void;
 }
 
 const ISSUE_LABELS: Record<string, string> = {
@@ -57,7 +60,7 @@ const describePreflightIssues = (
   return parts.length > 0 ? parts.join(' ') : 'temuan yang perlu diperhatikan.';
 };
 
-export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive = false }) => {
+export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive = false, onNavigateToLaporan }) => {
   const [sections, setSections] = useState<Section[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [statuses, setStatuses] = useState<SentenceStatus[]>([]);
@@ -73,6 +76,9 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
   const [dosenDrawerOpen, setDosenDrawerOpen] = useState(false);
   const [dosenNotes, setDosenNotes] = useState<Array<{ section_title: string; sentence_uid: string; severity: string; comment: string }>>([]);
   const [loadingDosen, setLoadingDosen] = useState(false);
+
+  // Draft Management State
+  const [draftModalOpen, setDraftModalOpen] = useState(false);
 
   // Export & Preflight Modal
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -129,6 +135,41 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
     const el = document.getElementById(`section-heading-${secIdx}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleCloseDocument = async () => {
+    if (!window.confirm('Tutup dan bersihkan pratinjau lembar kerja ini? Sesi draf Anda tetap aman tersimpan di arsip draf.')) {
+      return;
+    }
+    try {
+      await api.clearActiveDraft();
+      setSections([]);
+      setSources([]);
+      setStatuses([]);
+      setCitations({ labels: {}, references: [] });
+      setAnalytics(null);
+      setSelectedUid(null);
+      toast.info('Pratinjau dokumen ditutup. Lembar kerja telah dikosongkan.');
+    } catch (e) {
+      console.error(e);
+      toast.error('Gagal menutup pratinjau dokumen.');
+    }
+  };
+
+  const handleLoadDraftFromModal = async (draftId: string) => {
+    try {
+      const res = await api.loadNamedDraft(draftId);
+      if (res?.success) {
+        setDraftModalOpen(false);
+        await loadDraft();
+        toast.success('Draf berhasil dimuat ke lembar telaah.');
+      } else {
+        toast.error(res?.error || 'Gagal memuat draf.');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Terjadi kesalahan saat memuat draf.');
     }
   };
 
@@ -613,6 +654,15 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
             Tandai Semua Bukan Klaim
           </button>
           <button
+            type="button"
+            onClick={() => setDraftModalOpen(true)}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
+            title="Buka atau ganti draf laporan dari arsip"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-slate-500" />
+            <span>Buka Draf</span>
+          </button>
+          <button
             onClick={handleRequestDosenReview}
             className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
           >
@@ -626,6 +676,17 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
             <FileDown className="w-4 h-4" />
             <span>Simpan DOCX</span>
           </button>
+          {sections.length > 0 && (
+            <button
+              type="button"
+              onClick={handleCloseDocument}
+              className="px-3 py-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition shadow-xs"
+              title="Tutup dan bersihkan pratinjau lembar kerja saat ini"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Tutup Dokumen</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -693,8 +754,38 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
         {/* Document Paper Sheet (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-8 flex justify-center review-document-stage">
           {sections.length === 0 ? (
-            <div className="text-center py-24 text-slate-400 text-sm">
-              Belum ada hasil laporan untuk direview.<br />Silakan generate laporan terlebih dahulu di tab <strong>Buat Laporan</strong>.
+            <div className="flex-1 flex items-center justify-center p-8 min-h-[500px]">
+              <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200/80 shadow-md p-8 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-700 mx-auto shadow-xs">
+                  <FileText className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Belum Ada Dokumen yang Dibuka</h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Pilih draf dari arsip pekerjaan Anda untuk melanjutkan telaah, atau mulai susun naskah baru bersama AI.
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setDraftModalOpen(true)}
+                    className="w-full sm:w-auto px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center space-x-2 transition active:scale-95"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    <span>Buka Arsip Draf</span>
+                  </button>
+                  {onNavigateToLaporan && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToLaporan}
+                      className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition"
+                    >
+                      <Sparkles className="w-4 h-4 text-brand-600" />
+                      <span>Buat Laporan Baru</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <div
@@ -1051,6 +1142,25 @@ export const TabReview: React.FC<TabReviewProps> = ({ onExportSuccess, isActive 
           )}
         </div>
       )}
+
+      {/* Draft Manager Modal */}
+      <DraftManagerModal
+        isOpen={draftModalOpen}
+        onClose={() => setDraftModalOpen(false)}
+        onSelectDraft={handleLoadDraftFromModal}
+        onNewBlankProject={async () => {
+          await api.clearActiveDraft();
+          setSections([]);
+          setSources([]);
+          setStatuses([]);
+          setCitations({ labels: {}, references: [] });
+          setAnalytics(null);
+          setSelectedUid(null);
+          setDraftModalOpen(false);
+          toast.info('Lembar kerja dikosongkan.');
+        }}
+        canSaveCurrent={false}
+      />
 
       {/* Preflight Export Modal */}
       {exportModalOpen && (

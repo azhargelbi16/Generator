@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import concurrent.futures
 import json
 import logging
 import os
@@ -84,6 +86,7 @@ class ApiBridge:
         self._window: webview.Window | None = None
         self._cancel_gen_event = threading.Event()
         self._gen_thread: threading.Thread | None = None
+        self._enrichment_semaphore = threading.Semaphore(2)
 
     def set_window(self, window: webview.Window) -> None:
         self._window = window
@@ -194,15 +197,38 @@ class ApiBridge:
         }
 
     def save_profile(self, data: dict[str, str]) -> dict[str, Any]:
+        nama = str(data.get("nama", "")).strip()
+        nim = str(data.get("nim", "")).strip()
+        prodi = str(data.get("prodi", "")).strip()
+        fakultas = str(data.get("fakultas", "")).strip()
+        institusi = str(data.get("institusi", "")).strip()
         self.db.set_profil(
             database.Profil(
-                nama=str(data.get("nama", "")).strip(),
-                nim=str(data.get("nim", "")).strip(),
-                prodi=str(data.get("prodi", "")).strip(),
-                fakultas=str(data.get("fakultas", "")).strip(),
-                institusi=str(data.get("institusi", "")).strip(),
+                nama=nama,
+                nim=nim,
+                prodi=prodi,
+                fakultas=fakultas,
+                institusi=institusi,
             )
         )
+        try:
+            active_draft = drafts.load_draft(DRAFT_ACTIVE_ID)
+            if active_draft:
+                f = dict(active_draft.fields) if active_draft.fields else {}
+                f["NAMA"] = nama
+                f["NIM"] = nim
+                f["PRODI"] = prodi
+                f["FAKULTAS"] = fakultas
+                f["INSTITUSI"] = institusi
+                drafts.save_draft(drafts.DraftState(
+                    draft_id=DRAFT_ACTIVE_ID,
+                    fields=f,
+                    sources=active_draft.sources,
+                    sections=active_draft.sections,
+                    done=active_draft.done,
+                ))
+        except Exception:
+            log.exception("Gagal menyinkronkan profil ke draf aktif")
         return {"success": True}
 
     def list_dosen(self) -> list[dict[str, Any]]:
@@ -257,12 +283,60 @@ class ApiBridge:
         self.db.delete_mata_kuliah(int(mk_id))
         return {"success": True}
 
+    def _read_image_as_data_url(self, file_path: Path | str) -> str | None:
+        try:
+            p = Path(file_path)
+            if not p.is_file():
+                return None
+            ext = p.suffix.lower()
+            mime_map = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".bmp": "image/bmp",
+                ".webp": "image/webp",
+                ".gif": "image/gif",
+                ".svg": "image/svg+xml",
+            }
+            mime = mime_map.get(ext, "image/png")
+            raw = p.read_bytes()
+            encoded = base64.b64encode(raw).decode("ascii")
+            return f"data:{mime};base64,{encoded}"
+        except Exception:
+            return None
+
     def list_logos(self) -> list[dict[str, Any]]:
         logos = self.db.list_logo()
         res = []
+        paths.LOGOS_DIR.mkdir(parents=True, exist_ok=True)
         for l in logos:
-            exists = Path(l.path).is_file()
-            res.append({"id": l.id, "nama": l.nama, "path": l.path, "exists": exists})
+            src_file = Path(l.path)
+            # Jika logo masih berada di luar folder program (data/logos),
+            # salin otomatis ke data/logos agar terorganisir rapi dan aman.
+            if src_file.is_file():
+                try:
+                    src_file.resolve().relative_to(paths.LOGOS_DIR.resolve())
+                except ValueError:
+                    dest_file = paths.LOGOS_DIR / src_file.name
+                    counter = 1
+                    while dest_file.exists() and dest_file.resolve() != src_file.resolve():
+                        dest_file = paths.LOGOS_DIR / f"{src_file.stem}_{counter}{src_file.suffix}"
+                        counter += 1
+                    if not dest_file.exists():
+                        shutil.copy2(src_file, dest_file)
+                    self.db.update_logo(database.Logo(l.id, l.nama, str(dest_file)))
+                    l = database.Logo(l.id, l.nama, str(dest_file))
+                    src_file = dest_file
+
+            exists = src_file.is_file()
+            data_url = self._read_image_as_data_url(src_file) if exists else None
+            res.append({
+                "id": l.id,
+                "nama": l.nama,
+                "path": l.path,
+                "exists": exists,
+                "data_url": data_url,
+            })
         return res
 
     def upload_logo(self) -> dict[str, Any]:
@@ -283,7 +357,25 @@ class ApiBridge:
 
         shutil.copy2(src_path, dest_path)
         logo_id = self.db.add_logo(database.Logo(0, src_path.stem, str(dest_path)))
-        return {"success": True, "logo": {"id": logo_id, "nama": src_path.stem, "path": str(dest_path), "exists": True}}
+        data_url = self._read_image_as_data_url(dest_path)
+        return {
+            "success": True,
+            "logo": {
+                "id": logo_id,
+                "nama": src_path.stem,
+                "path": str(dest_path),
+                "exists": True,
+                "data_url": data_url,
+            }
+        }
+
+    def open_logos_folder(self) -> dict[str, Any]:
+        try:
+            paths.LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+            os.startfile(paths.LOGOS_DIR)
+            return {"success": True}
+        except Exception as e:
+            return {"error": str(e)}
 
     def delete_logo(self, logo_id: int) -> dict[str, Any]:
         logos = self.db.list_logo()
@@ -364,57 +456,58 @@ class ApiBridge:
         h2.paragraph_format.space_after = Pt(4)
         h2.paragraph_format.line_spacing = line_spacing
 
-        # 3. Halaman Sampul (Cover Page)
-        p_judul = doc.add_paragraph()
-        p_judul.paragraph_format.space_before = Cm(1.5)
-        p_judul.paragraph_format.space_after = Cm(1.0)
-        p_judul.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r_judul = p_judul.add_run("{{JUDUL}}")
-        r_judul.bold = True
-        r_judul.font.name = font_name
-        r_judul.font.size = Pt(16)
+        # 3. Halaman Sampul (Cover Page) — struktur formal laporan akademik
+        def _cover_line(
+            text: str,
+            *,
+            bold: bool = False,
+            size: int = 12,
+            space_before: Any = None,
+            space_after: Any = None,
+            line_spacing: float = 1.15,
+        ):
+            """Satu baris sampul tersendiri, terpusat, dengan tipografi seragam."""
+            par = doc.add_paragraph()
+            fmt = par.paragraph_format
+            fmt.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            fmt.line_spacing = line_spacing
+            fmt.space_before = space_before if space_before is not None else Pt(0)
+            fmt.space_after = space_after if space_after is not None else Pt(0)
+            run = par.add_run(text)
+            run.bold = bold
+            run.font.name = font_name
+            run.font.size = Pt(size)
+            return par
 
-        p_jenis = doc.add_paragraph()
-        p_jenis.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_jenis.paragraph_format.space_after = Cm(1.5)
-        r_jenis = p_jenis.add_run("LAPORAN AKADEMIK")
-        r_jenis.bold = True
-        r_jenis.font.name = font_name
-        r_jenis.font.size = Pt(12)
+        # Judul laporan: kapital, tebal, paling atas.
+        _cover_line(
+            "{{JUDUL}}", bold=True, size=16,
+            space_before=Cm(1.0), space_after=Cm(0.8),
+        )
+        # Keterangan jenis dokumen.
+        _cover_line("LAPORAN AKADEMIK", bold=True, space_after=Cm(1.0))
+        # Logo institusi 5x5 cm; paragrafnya dihapus renderer bila logo kosong.
+        _cover_line(
+            "{{LOGO}}", space_before=Cm(0.5), space_after=Cm(1.2),
+            line_spacing=1.0,
+        )
 
-        p_logo = doc.add_paragraph("{{LOGO}}")
-        p_logo.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_logo.paragraph_format.space_after = Cm(2.0)
+        # Blok penyusun (tengah sampul).
+        _cover_line("Disusun Oleh:", bold=True, space_before=Cm(0.5), space_after=Pt(6))
+        _cover_line("{{NAMA}}", bold=True)
+        _cover_line("NIM: {{NIM}}")
+        _cover_line("Mata Kuliah: {{MATA_KULIAH}}", space_before=Pt(6))
 
-        p_meta = doc.add_paragraph()
-        p_meta.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_meta.paragraph_format.line_spacing = 1.15
+        # Blok dosen pembimbing.
+        _cover_line("Dosen Pengampu:", bold=True, space_before=Cm(0.8), space_after=Pt(6))
+        _cover_line("{{DOSEN}}")
+        _cover_line("{{TANGGAL}}", space_before=Pt(6))
 
-        r_oleh = p_meta.add_run("Disusun Oleh:\n")
-        r_oleh.bold = True
-        r_oleh.font.name = font_name
-        r_oleh.font.size = Pt(12)
-
-        r_mhs = p_meta.add_run("Nama: {{NAMA}}\nNIM: {{NIM}}\n\n")
-        r_mhs.font.name = font_name
-        r_mhs.font.size = Pt(12)
-
-        r_dos_label = p_meta.add_run("Dosen Pembimbing:\n")
-        r_dos_label.bold = True
-        r_dos_label.font.name = font_name
-        r_dos_label.font.size = Pt(12)
-
-        r_dos = p_meta.add_run("{{DOSEN}}\n\n")
-        r_dos.font.name = font_name
-        r_dos.font.size = Pt(12)
-
-        r_mk = p_meta.add_run("Mata Kuliah: {{MATA_KULIAH}}\n")
-        r_mk.font.name = font_name
-        r_mk.font.size = Pt(12)
-
-        r_tgl = p_meta.add_run("{{TANGGAL}}")
-        r_tgl.font.name = font_name
-        r_tgl.font.size = Pt(12)
+        # Blok institusi formal di bagian bawah sampul.
+        _cover_line("PROGRAM STUDI {{PRODI}}", space_before=Cm(2.5))
+        _cover_line("FAKULTAS {{FAKULTAS}}")
+        _cover_line("{{INSTITUSI}}", bold=True)
+        _cover_line("{{TAHUN}}", space_before=Pt(6))
 
         doc.add_page_break()
 
@@ -618,36 +711,81 @@ class ApiBridge:
     # SOURCES (PDF, WEB, MANUAL)
     # =========================================================================
 
-    def pick_pdf_source(self) -> dict[str, Any]:
-        if not self._window:
-            return {"cancelled": True}
-        file_types = ("PDF Files (*.pdf)", "All files (*.*)")
-        res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types)
-        if not res or len(res) == 0:
-            return {"cancelled": True}
+    def _ingest_single_pdf(self, pdf_path: Path) -> tuple[dict[str, Any] | None, str | None]:
+        """Ekstrak teks dan metadata dari satu berkas PDF secara terisolasi.
 
-        pdf_path = Path(res[0])
+        Mengembalikan (record, None) jika berhasil, atau (None, error_msg) jika gagal.
+        """
         try:
             # Single-pass reading untuk performa optimal
             text, doc_meta_raw = pdf_reader.extract_text_and_metadata(pdf_path)
             doc_meta = normalize_metadata(doc_meta_raw)
         except Exception as e:
-            return {"error": f"Gagal membaca PDF: {e}"}
+            return None, f"{pdf_path.name}: Gagal membaca PDF ({e})"
 
-        # Unggah harus secepat unggah ke cloud: sumber langsung dipakai dengan
-        # metadata dokumen/DOI cepat; bibliografi AI diekstrak di latar
-        # (event `source_metadata_ready`). Kebijakannya ada di sources.intake.
-        resolved = intake.fast_doi_source(doc_meta, text[:3000])
-        if resolved is not None:
-            merged = resolved
+        try:
+            # Unggah cepat: metadata dokumen/DOI cepat; AI di latar
+            resolved = intake.fast_doi_source(doc_meta, text[:3000])
+            if resolved is not None:
+                merged = resolved
+            else:
+                merged = intake.merge_metadata(Source([], "", ""), doc_meta)
+            merged = intake.ensure_title(merged, pdf_path.stem)
+
+            record = intake.make_record(merged, text, "pdf")
+            if intake.needs_enrichment(merged):
+                self._start_metadata_enrichment(record["ref"], text)
+            return record, None
+        except Exception as e:
+            return None, f"{pdf_path.name}: Gagal memproses metadata ({e})"
+
+    def pick_pdf_source(self) -> dict[str, Any]:
+        if not self._window:
+            return {"cancelled": True}
+        file_types = ("PDF Files (*.pdf)", "All files (*.*)")
+        res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True, file_types=file_types)
+        if not res or len(res) == 0:
+            return {"cancelled": True}
+
+        # Guardrail performa: Maksimal 15 berkas diproses sekaligus
+        max_allowed = 15
+        selected_paths = [Path(p) for p in res]
+        warning_msg: str | None = None
+        if len(selected_paths) > max_allowed:
+            warning_msg = f"Anda memilih {len(selected_paths)} berkas. Maksimal {max_allowed} berkas diproses sekaligus agar performa tetap ringan."
+            selected_paths = selected_paths[:max_allowed]
+
+        records: list[dict[str, Any]] = []
+        errors: list[str] = []
+
+        if len(selected_paths) == 1:
+            rec, err = self._ingest_single_pdf(selected_paths[0])
+            if rec:
+                records.append(rec)
+            if err:
+                errors.append(err)
         else:
-            merged = intake.merge_metadata(Source([], "", ""), doc_meta)
-        merged = intake.ensure_title(merged, pdf_path.stem)
+            # Ekstraksi paralel multi-threading (maksimal 4 worker threads)
+            max_workers = min(len(selected_paths), 4)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                results = list(executor.map(self._ingest_single_pdf, selected_paths))
+                for rec, err in results:
+                    if rec:
+                        records.append(rec)
+                    if err:
+                        errors.append(err)
 
-        record = intake.make_record(merged, text, "pdf")
-        if intake.needs_enrichment(merged):
-            self._start_metadata_enrichment(record["ref"], text)
-        return {"success": True, "record": record}
+        if not records and errors:
+            return {"success": False, "error": "; ".join(errors), "errors": errors}
+
+        return {
+            "success": len(records) > 0,
+            "record": records[0] if records else None,
+            "records": records,
+            "count": len(records),
+            "errors": errors if errors else None,
+            "warning": warning_msg,
+        }
 
     def _start_metadata_enrichment(self, ref: str, text: str) -> None:
         """Ekstraksi bibliografi AI di thread latar; hasil via event.
@@ -657,18 +795,19 @@ class ApiBridge:
         """
 
         def run() -> None:
-            try:
-                cl = AIClient(self._cfg)
-                source = bibliography.extract_source(text, cl)
-            except (AIError, bibliography.BibliographyError) as exc:
-                log.info(f"Enrichment metadata sumber {ref} gagal: {exc}")
-                return
-            except Exception:
-                log.exception(f"Enrichment metadata sumber {ref} error tak terduga")
-                return
-            if not (source and (source.authors or source.title)):
-                return
-            self._emit("source_metadata_ready", {
+            with self._enrichment_semaphore:
+                try:
+                    cl = AIClient(self._cfg)
+                    source = bibliography.extract_source(text, cl)
+                except (AIError, bibliography.BibliographyError) as exc:
+                    log.info(f"Enrichment metadata sumber {ref} gagal: {exc}")
+                    return
+                except Exception:
+                    log.exception(f"Enrichment metadata sumber {ref} error tak terduga")
+                    return
+                if not (source and (source.authors or source.title)):
+                    return
+                self._emit("source_metadata_ready", {
                 "ref": ref,
                 "title": source.title,
                 "year": source.year,
@@ -750,7 +889,7 @@ class ApiBridge:
         sources_text = "\n\n".join(source_summaries)
 
         system_msg = (
-            "Anda adalah dosen pembimbing akademik senior dan pakar penulisan karya ilmiah Indonesia. "
+            "Anda adalah dosen pengampu mata kuliah senior dan pakar penulisan karya ilmiah Indonesia. "
             "Tugas Anda adalah merumuskan 1 (SATU) judul laporan akademik, skripsi, makalah penelitian, "
             "atau tugas akhir yang komprehensif, menarik, formal, dan baku dalam Bahasa Indonesia "
             "berdasarkan tema dan sintesis dari sumber-sumber jurnal yang diberikan.\n\n"
@@ -859,10 +998,23 @@ class ApiBridge:
         draft = drafts.load_draft(DRAFT_ACTIVE_ID)
         if not draft:
             return {"has_draft": False}
+        fields = dict(draft.fields) if draft.fields else {}
+        profil = self.db.get_profil()
+        if profil:
+            if (profil.nama or "").strip():
+                fields["NAMA"] = profil.nama.strip()
+            if (profil.nim or "").strip():
+                fields["NIM"] = profil.nim.strip()
+            if (profil.prodi or "").strip():
+                fields["PRODI"] = profil.prodi.strip()
+            if (profil.fakultas or "").strip():
+                fields["FAKULTAS"] = profil.fakultas.strip()
+            if (profil.institusi or "").strip():
+                fields["INSTITUSI"] = profil.institusi.strip()
         return {
             "has_draft": True,
             "draft_id": draft.draft_id,
-            "fields": draft.fields,
+            "fields": fields,
             "sources": draft.sources,
             "sections": draft.sections,
             "done": list(draft.done),
@@ -957,6 +1109,12 @@ class ApiBridge:
         drafts.delete_draft(draft_id)
         return {"success": True}
 
+    def delete_named_drafts(self, draft_ids: list[str]) -> dict[str, Any]:
+        for d_id in draft_ids:
+            if d_id:
+                drafts.delete_draft(str(d_id))
+        return {"success": True}
+
     # =========================================================================
     # GENERATION ORCHESTRATION (STREAMING VIA JS EVENTS)
     # =========================================================================
@@ -968,7 +1126,7 @@ class ApiBridge:
         topic = request_data.get("topic", "").strip()
         outline = request_data.get("outline", [])
         sources_data = request_data.get("sources", [])
-        variant_code = request_data.get("variant", "b")
+        variant_code = request_data.get("variant", "d")
 
         if not topic:
             return {"error": "Judul belum diisi."}
@@ -1044,6 +1202,18 @@ class ApiBridge:
                 draft_fields["JUDUL"] = topic
                 draft_fields["VARIANT"] = variant_code
                 draft_fields["OUTLINE"] = outline
+                profil = self.db.get_profil()
+                if profil:
+                    if (profil.nama or "").strip():
+                        draft_fields["NAMA"] = profil.nama.strip()
+                    if (profil.nim or "").strip():
+                        draft_fields["NIM"] = profil.nim.strip()
+                    if (profil.prodi or "").strip():
+                        draft_fields["PRODI"] = profil.prodi.strip()
+                    if (profil.fakultas or "").strip():
+                        draft_fields["FAKULTAS"] = profil.fakultas.strip()
+                    if (profil.institusi or "").strip():
+                        draft_fields["INSTITUSI"] = profil.institusi.strip()
                 if active_draft and drafts.has_review_progress(active_draft):
                     drafts.archive_draft(active_draft, prefix="arsip_pregen")
                 drafts.save_draft(drafts.DraftState(
@@ -1236,6 +1406,17 @@ class ApiBridge:
         label_forms = report.label_forms_for(doc.sources, cited, style=style)
         refs = report.references_for(doc.sources, cited)
 
+        # Gerbang ekspor keras: dokumen yang belum layak dikumpulkan ditolak di
+        # backend, bukan hanya lewat dialog preflight yang bisa dilewati. Biaya
+        # O(jumlah kalimat) tanpa verifikasi ulang dan tanpa panggilan AI.
+        blockers = preflight.export_blockers(doc.sections, refs)
+        if blockers:
+            return {
+                "error": "Ekspor ditolak — dokumen belum layak dikumpulkan: "
+                + "; ".join(blockers)
+                + ". Lengkapi dokumen (atau buang penanda yang tidak dipakai) lalu ekspor lagi."
+            }
+
         normalized_fields = dict(fields)
         for k, v in list(fields.items()):
             if not k.startswith("{{") and not k.endswith("}}"):
@@ -1243,24 +1424,45 @@ class ApiBridge:
             elif k.startswith("{{") and k.endswith("}}"):
                 normalized_fields.setdefault(k[2:-2].strip(), v)
 
-        # Penanda sampul wajib punya rantai cadangan: draf -> profil SQLite ->
-        # nilai terhitung, sehingga penanda tidak pernah tercetak mentah.
+        # Tanggal dari PDF/unduhan/skrip uji bisa berbahasa Inggris; normalkan ke
+        # bentuk Indonesia sebelum dirender ke sampul.
+        for key in list(normalized_fields):
+            if key.strip("{}").strip().upper() == "TANGGAL":
+                normalized_fields[key] = report.format_tanggal_teks(normalized_fields[key])
+
+        # Profil mahasiswa di Tab Data (database SQLite) adalah SUMBER UTAMA
+        # (single source of truth) untuk halaman sampul. Bila profil di database
+        # terisi, nilai tersebut SELALU digunakan agar residu data draf lama/uji
+        # tidak pernah mengesampingkan identitas resmi mahasiswa.
         profil = self.db.get_profil()
-        fallbacks = {
-            "NAMA": profil.nama,
-            "NIM": profil.nim,
-            "PRODI": profil.prodi,
-            "FAKULTAS": profil.fakultas,
-            "INSTITUSI": profil.institusi,
-            "TANGGAL": report.format_tanggal(),
-            "TAHUN": str(datetime.now().year),
+        official_identity = {
+            "NAMA": (profil.nama or "").strip(),
+            "NIM": (profil.nim or "").strip(),
+            "PRODI": (profil.prodi or "").strip().upper(),
+            "FAKULTAS": (profil.fakultas or "").strip().upper(),
+            "INSTITUSI": (profil.institusi or "").strip().upper(),
         }
-        for key, value in fallbacks.items():
-            if not str(normalized_fields.get(key, "") or "").strip() and value:
-                # isi dua bentuk kunci (dengan dan tanpa kurung kurawal) agar
-                # renderer yang membaca salah satu bentuk tetap menemukannya
+        for key, value in official_identity.items():
+            if value:
                 normalized_fields[key] = value
-                normalized_fields.setdefault(f"{{{{{key}}}}}", value)
+                normalized_fields[f"{{{{{key}}}}}"] = value
+
+        # Tanggal dan tahun otomatis bila belum dispesifikasi
+        if not str(normalized_fields.get("TANGGAL", "") or "").strip():
+            tgl = report.format_tanggal()
+            normalized_fields["TANGGAL"] = tgl
+            normalized_fields["{{TANGGAL}}"] = tgl
+        if not str(normalized_fields.get("TAHUN", "") or "").strip():
+            yr = str(datetime.now().year)
+            normalized_fields["TAHUN"] = yr
+            normalized_fields["{{TAHUN}}"] = yr
+
+        # Pastikan PRODI, FAKULTAS, INSTITUSI selalu kapital rapi untuk sampul resmi
+        for key in ("PRODI", "FAKULTAS", "INSTITUSI"):
+            for field_key in (key, f"{{{{{key}}}}}"):
+                val = str(normalized_fields.get(field_key, "") or "").strip()
+                if val:
+                    normalized_fields[field_key] = val.upper()
 
         judul = normalized_fields.get("JUDUL", "Laporan")
         filename = report.sanitize_filename(judul)
@@ -1272,11 +1474,14 @@ class ApiBridge:
             logo_path = None
 
         try:
+            # Daftar pustaka dikirim terpejal per run (teks, italic) agar renderer
+            # bisa memiringkan nama jurnal + volume APA 7; fallback string bila kosong.
+            ref_runs = report.reference_runs_for(doc.sources, cited) or refs
             final_path = renderer.render_report(
                 template_path=Path(tpl.path),
                 fields=normalized_fields,
                 sections=doc.sections,
-                references=refs,
+                references=ref_runs,
                 logo_path=Path(logo_path) if logo_path else None,
                 output_path=out_path,
                 labels=labels,

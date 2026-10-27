@@ -1,5 +1,7 @@
 """Tes inti report: gerbang ekspor, pending, sitasi, label, dan referensi (Task 17a)."""
 
+import re
+
 from generator.report import (can_export, pending, references_for, labels_for,
     uncited_ids, non_factual_uids, cited_ids, display_text)
 from generator.verification import verify_sections, STATUS_VERIFIED
@@ -156,3 +158,33 @@ def test_sanitize_filename_nama_reserved_windows_diberi_akhiran():
     assert sanitize_filename("CON") == "CON_"
     assert sanitize_filename("lpt1") == "lpt1_"
     assert sanitize_filename("Laporan CON") == "Laporan_CON"
+
+
+# --- Fase 3: nama berkas panjang dipotong di batas kata + penanda hash --------
+
+
+def test_sanitize_filename_potong_di_batas_kata_dan_beri_hash():
+    from generator.report import sanitize_filename
+
+    judul = (
+        "Pengaruh Media Sosial terhadap Prestasi Akademik Mahasiswa Program Studi "
+        "Agroteknologi Fakultas Pertanian Universitas Jember Tahun Dua Ribu Dua Puluh Enam"
+    )
+    nama = sanitize_filename(judul)
+    assert len(nama) <= 80
+    # Penanda pendek 8 karakter hex di belakang nama yang terpotong.
+    assert re.fullmatch(r".+_[0-9a-f]{8}", nama)
+    bersih = judul.replace(" ", "_")
+    badan = nama.rsplit("_", 1)[0]
+    assert badan and bersih.startswith(badan)
+    # Berhenti tepat di batas kata: karakter setelah badan adalah pemisah kata.
+    assert bersih[len(badan)] == "_"
+    # Judul yang berbeda di bagian ekor mendapat nama yang berbeda (unik).
+    assert nama != sanitize_filename(judul + " Edisi Revisi")
+
+
+def test_sanitize_filename_judul_pendek_tanpa_penanda_hash():
+    from generator.report import sanitize_filename
+
+    assert sanitize_filename("Laporan Pertanian") == "Laporan_Pertanian"
+    assert sanitize_filename("Media Sosial") == "Media_Sosial"

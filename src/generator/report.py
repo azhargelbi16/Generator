@@ -25,12 +25,37 @@ _BULAN_INDONESIA = (
     "Juli", "Agustus", "September", "Oktober", "November", "Desember",
 )
 
+_BULAN_INGGRIS = {
+    "january": "Januari", "february": "Februari", "march": "Maret",
+    "april": "April", "may": "Mei", "june": "Juni", "july": "Juli",
+    "august": "Agustus", "september": "September", "october": "Oktober",
+    "november": "November", "december": "Desember",
+}
+_TANGGAL_RE = re.compile(r"^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$")
+
 
 def format_tanggal(d: date | None = None) -> str:
     """Tanggal dalam bahasa Indonesia, mis. 18 Oktober 2026 (18.5)."""
     if d is None:
         d = date.today()
     return f"{d.day} {_BULAN_INDONESIA[d.month - 1]} {d.year}"
+
+
+def format_tanggal_teks(value: str) -> str:
+    """Terjemahkan tanggal teks ("25 October 2026") ke bentuk Indonesia.
+
+    PDF, unduhan, dan skrip uji kerap membawa nama bulan berbahasa Inggris;
+    tanpa normalisasi ini sampul laporan berbahasa Indonesia bisa memuat
+    "25 October 2026". Nilai yang tidak berpola tanggal dikembalikan apa adanya.
+    """
+    text = " ".join(str(value or "").split())
+    match = _TANGGAL_RE.match(text)
+    if not match:
+        return text
+    bulan = _BULAN_INGGRIS.get(match.group(2).casefold())
+    if bulan is None:
+        return text
+    return f"{int(match.group(1))} {bulan} {match.group(3)}"
 
 
 def _extract_str(obj, key: str) -> str:
@@ -57,7 +82,7 @@ def build_fields(
         tanggal = date.today()
 
     if isinstance(tanggal, str):
-        tanggal_str = tanggal
+        tanggal_str = format_tanggal_teks(tanggal)
         year_str = str(date.today().year)
     else:
         tanggal_str = format_tanggal(tanggal)
@@ -80,13 +105,15 @@ def build_fields(
         "{{MATA_KULIAH}}": matkul_str.strip(),
         "{{TANGGAL}}": tanggal_str,
     }
-    prodi = _extract_str(profile, "prodi")
+    # Baris identitas sampul ditulis kapital sesuai kebiasaan halaman judul
+    # akademik: PROGRAM STUDI AGROTEKNOLOGI / FAKULTAS PERTANIAN / UNIVERSITAS ...
+    prodi = _extract_str(profile, "prodi").upper()
     if prodi:
         fields["{{PRODI}}"] = prodi
-    fakultas = _extract_str(profile, "fakultas")
+    fakultas = _extract_str(profile, "fakultas").upper()
     if fakultas:
         fields["{{FAKULTAS}}"] = fakultas
-    institusi = _extract_str(profile, "institusi")
+    institusi = _extract_str(profile, "institusi").upper()
     if institusi:
         fields["{{INSTITUSI}}"] = institusi
         fields["{{UNIVERSITAS}}"] = institusi
@@ -177,6 +204,14 @@ def label_forms_for(
 def references_for(sources: list[Source], cited: set[int]) -> list[str]:
     """Entri daftar pustaka hanya untuk sumber yang dikutip."""
     return [labeled.reference for labeled in order_and_label(sources, cite=cited)]
+
+
+def reference_runs_for(sources: list[Source], cited: set[int]) -> list[list]:
+    """Entri daftar pustaka terpejal per run (teks, italic) untuk renderer DOCX."""
+    return [
+        labeled.reference_runs
+        for labeled in order_and_label(sources, cite=cited)
+    ]
 
 
 def uncited_ids(sources: list[Source], cited: set[int]) -> list[int]:

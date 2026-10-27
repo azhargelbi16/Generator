@@ -3,7 +3,15 @@ data/
 __pycache__/
 *.pyc
 .pytest_cache/
+.pytest_tmp/
 .superpowers/
 output/
 scratch/
 frontend/node_modules/
+
+debug.log
+*.mp4
+clip-showcase/
+.agents/
+skills-lock.json
+integration_check/

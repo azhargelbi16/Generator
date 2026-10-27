@@ -182,3 +182,34 @@ def test_parity_resolve_doi_langsung(tmp_path: Path, monkeypatch):
         assert rec["title"] == "Judul Langsung"
     finally:
         db.close()
+
+
+# --- Data bibliografis CrossRef (APA 7) --------------------------------------
+
+
+def test_crossref_message_mengambil_volume_issue_page():
+    msg = dict(_crossref_msg())
+    msg.update({"volume": "9", "issue": "10", "page": "1272-1281"})
+    src = intake.source_from_crossref_message("10.1016/j.compag.2021.106123", msg)
+    assert (src.volume, src.issue, src.pages) == ("9", "10", "1272-1281")
+
+
+def test_record_bolak_balik_volume_issue_pages():
+    from generator.sources.records import record_to_source, source_to_record
+
+    src = Source(
+        [Author("Santoso", "Budi")], "2024", "Judul", "Healthcare",
+        volume="9", issue="10", pages="1272",
+    )
+    record = source_to_record(src, "teks sumber", "doi")
+    assert (record["volume"], record["issue"], record["pages"]) == ("9", "10", "1272")
+
+    back = record_to_source(record)
+    assert (back.volume, back.issue, back.pages) == ("9", "10", "1272")
+
+
+def test_record_lama_tanpa_volume_tetap_valid():
+    from generator.sources.records import record_to_source
+
+    back = record_to_source({"title": "Judul", "year": "2020", "authors": []})
+    assert (back.volume, back.issue, back.pages) == ("", "", "")

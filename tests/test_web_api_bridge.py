@@ -54,6 +54,7 @@ def test_api_bridge_config_and_profiles(tmp_path: Path):
     assert "A" in codes
     assert "B" in codes
     assert "C" in codes
+    assert "D" in codes
     assert "BEBAS" in codes
 
     db.close()
@@ -176,6 +177,15 @@ def test_api_bridge_multi_project_and_doi(tmp_path: Path, monkeypatch):
 
     del_res = bridge.delete_named_draft(draft_id)
     assert del_res.get("success") is True
+
+    # Test batch delete
+    save_1 = bridge.save_named_draft("Draf Batch 1", {"fields": {"JUDUL": "D1"}, "sources": [], "sections": [], "done": []})
+    save_2 = bridge.save_named_draft("Draf Batch 2", {"fields": {"JUDUL": "D2"}, "sources": [], "sections": [], "done": []})
+    id1, id2 = save_1["draft_id"], save_2["draft_id"]
+    batch_del = bridge.delete_named_drafts([id1, id2])
+    assert batch_del.get("success") is True
+    remaining = [d["draft_id"] for d in bridge.list_saved_drafts()]
+    assert id1 not in remaining and id2 not in remaining
 
     db.close()
 
@@ -504,3 +514,168 @@ def test_add_manual_source_fast_doi(tmp_path: Path, monkeypatch):
     assert rec.get("authors")[0]["family"] == "Smith"
 
     db.close()
+
+
+# --- Gerbang ekspor keras di backend -----------------------------------------
+
+
+def _export_bridge(tmp_path: Path):
+    from generator.web import api_bridge
+    from generator import paths
+
+    paths.set_data_dir(tmp_path)
+    paths.OUTPUT_DIR = tmp_path / "output"
+    paths.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    db = database.Database(tmp_path / "gate.db")
+    db.init_schema()
+    bridge = api_bridge.ApiBridge(db, config_path=tmp_path / "config.json")
+    tpl_res = bridge.create_default_template({"font_name": "Times New Roman", "margin_preset": "4433"})
+    assert tpl_res.get("success") is True
+    tpl_id = bridge.list_templates()[0]["id"]
+    return db, bridge, tpl_id
+
+
+def _export_state(tpl_id: int, sections: list[dict]) -> dict:
+    return {
+        "template_id": tpl_id,
+        "fields": {"JUDUL": "Laporan Uji Gerbang"},
+        "sources": [
+            {
+                "authors": [{"family": "Santoso", "given": "Budi"}],
+                "year": "2020",
+                "title": "Studi Pertanian",
+                "container": "Jurnal Agronomi",
+            }
+        ],
+        "sections": sections,
+        "open_word": False,
+    }
+
+
+def test_export_report_menolak_laporan_kosong(tmp_path: Path, monkeypatch):
+    db, bridge, tpl_id = _export_bridge(tmp_path)
+    try:
+        res = bridge.export_report(_export_state(tpl_id, []))
+        assert res.get("success") is None
+        assert "Ekspor ditolak" in res.get("error", "")
+        assert not list((tmp_path / "output").glob("*.docx")), "tidak boleh ada berkas tertulis"
+    finally:
+        db.close()
+
+
+def test_export_report_menolak_penanda_tabel_yang_belum_diisi(tmp_path: Path, monkeypatch):
+    db, bridge, tpl_id = _export_bridge(tmp_path)
+    try:
+        sections = [
+            {
+                "level": 1,
+                "title": "BAB 3. HASIL DAN PEMBAHASAN",
+                "paragraphs": [
+                    {"sentences": [
+                        {"text": "[TABEL: Ringkasan hasil]", "quote": "", "source_ids": [],
+                         "is_factual": False, "citation": True}
+                    ]}
+                ],
+            }
+        ]
+        res = bridge.export_report(_export_state(tpl_id, sections))
+        assert "Ekspor ditolak" in res.get("error", "")
+        assert "TABEL" in res.get("error", "")
+    finally:
+        db.close()
+
+
+def test_export_report_menolak_bab_kosong(tmp_path: Path, monkeypatch):
+    db, bridge, tpl_id = _export_bridge(tmp_path)
+    try:
+        sections = [
+            {
+                "level": 1,
+                "title": "BAB 1. PENDAHULUAN",
+                "paragraphs": [
+                    {"sentences": [
+                        {"text": "Pertanian organik berkembang.", "quote": "pertanian organik",
+                         "source_ids": [0], "is_factual": True, "citation": True}
+                    ]}
+                ],
+            },
+            {"level": 1, "title": "BAB 2. TINJAUAN PUSTAKA", "paragraphs": []},
+        ]
+        res = bridge.export_report(_export_state(tpl_id, sections))
+        assert "Ekspor ditolak" in res.get("error", "")
+        assert "BAB 2" in res.get("error", "")
+    finally:
+        db.close()
+
+
+def test_pick_pdf_source_cancelled_or_no_window(tmp_path: Path):
+    db_file = tmp_path / 'test.db'
+    db = database.Database(db_file)
+    db.init_schema()
+    bridge = ApiBridge(db)
+    try:
+        # No window
+        res = bridge.pick_pdf_source()
+        assert res.get('cancelled') is True
+
+        # Window returns empty
+        class MockWindow:
+            def create_file_dialog(self, *args, **kwargs):
+                return []
+        bridge.set_window(MockWindow())
+        res = bridge.pick_pdf_source()
+        assert res.get('cancelled') is True
+    finally:
+        db.close()
+
+
+def test_pick_pdf_source_multiple_and_capped_at_15(tmp_path: Path, monkeypatch):
+    db_file = tmp_path / 'test.db'
+    db = database.Database(db_file)
+    db.init_schema()
+    bridge = ApiBridge(db)
+
+    class MockWindow:
+        def __init__(self, paths):
+            self.paths = paths
+        def create_file_dialog(self, *args, **kwargs):
+            return self.paths
+
+    def mock_ingest(self, path):
+        if 'bad' in path.name:
+            return None, f'{path.name}: Corrupt file'
+        return {'ref': path.stem, 'title': f'Title of {path.stem}', 'text': 'content'}, None
+
+    monkeypatch.setattr(ApiBridge, '_ingest_single_pdf', mock_ingest)
+
+    try:
+        # 1. Test 5 files
+        paths = [tmp_path / f'doc_{i}.pdf' for i in range(5)]
+        bridge.set_window(MockWindow([str(p) for p in paths]))
+        res = bridge.pick_pdf_source()
+        assert res['success'] is True
+        assert res['count'] == 5
+        assert len(res['records']) == 5
+        assert res['record']['ref'] == 'doc_0'
+        assert res['warning'] is None
+
+        # 2. Test 18 files capped at 15
+        paths_18 = [tmp_path / f'doc_{i}.pdf' for i in range(18)]
+        bridge.set_window(MockWindow([str(p) for p in paths_18]))
+        res_capped = bridge.pick_pdf_source()
+        assert res_capped['success'] is True
+        assert res_capped['count'] == 15
+        assert len(res_capped['records']) == 15
+        assert 'Maksimal 15' in res_capped['warning']
+
+        # 3. Test partial failure (3 files, 1 bad)
+        paths_mixed = [tmp_path / 'doc_ok1.pdf', tmp_path / 'doc_bad.pdf', tmp_path / 'doc_ok2.pdf']
+        bridge.set_window(MockWindow([str(p) for p in paths_mixed]))
+        res_mixed = bridge.pick_pdf_source()
+        assert res_mixed['success'] is True
+        assert res_mixed['count'] == 2
+        assert len(res_mixed['records']) == 2
+        assert len(res_mixed['errors']) == 1
+        assert 'Corrupt file' in res_mixed['errors'][0]
+    finally:
+        db.close()

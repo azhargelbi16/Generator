@@ -57,7 +57,7 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
         "returns": "{ success: boolean }",
     },
     "list_dosen": {
-        "description": "Daftar dosen pembimbing",
+        "description": "Daftar dosen pengampu",
         "params": [],
         "returns": "Dosen[]",
     },
@@ -111,6 +111,11 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
         "params": [{"name": "id", "type": "number"}],
         "returns": "{ success: boolean }",
     },
+    "open_logos_folder": {
+        "description": "Membuka folder penyimpanan logo di File Explorer",
+        "params": [],
+        "returns": "{ success?: boolean, error?: string }",
+    },
     "list_templates": {
         "description": "Daftar template dokumen",
         "params": [],
@@ -143,9 +148,9 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
     },
     # Sources
     "pick_pdf_source": {
-        "description": "Membaca file PDF dan mengekstrak teks serta metadata",
+        "description": "Membaca file PDF (mendukung multi-select hingga 15 berkas) dan mengekstrak teks serta metadata secara paralel",
         "params": [],
-        "returns": "{ success: boolean, record?: SourceRecord, error?: string }",
+        "returns": "{ success: boolean, record?: SourceRecord, records?: SourceRecord[], errors?: string[], count?: number, warning?: string, error?: string }",
     },
     "add_web_source": {
         "description": "Mengunduh artikel web dari URL",
@@ -219,7 +224,7 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
         "returns": "{ success: boolean, sentence?: Sentence, error?: string }",
     },
     "request_dosen_review": {
-        "description": "Menjalankan evaluasi persona dosen pembimbing",
+        "description": "Menjalankan evaluasi persona dosen pengampu",
         "params": [
             {"name": "sections_dicts", "type": "Section[]"},
             {"name": "sources_data", "type": "SourceRecord[]"},
@@ -305,6 +310,11 @@ API_ENDPOINTS: Dict[str, Dict[str, Any]] = {
     "delete_named_draft": {
         "description": "Menghapus draf dari disk",
         "params": [{"name": "draft_id", "type": "string"}],
+        "returns": "{ success: boolean }",
+    },
+    "delete_named_drafts": {
+        "description": "Menghapus beberapa draf dari disk secara massal",
+        "params": [{"name": "draft_ids", "type": "string[]"}],
         "returns": "{ success: boolean }",
     },
 }

@@ -178,3 +178,148 @@ def test_min_words_lima_lolos_dan_empat_gagal():
         source_ids=[0],
     )
     assert verify_sentence(sent_4, texts) == STATUS_UNVERIFIED
+
+
+# --- Deteksi salinan verbatim ------------------------------------------------
+
+
+def test_kalimat_panjang_menyalin_verbatim_ditandai_perlu_ditinjau():
+    source = (
+        "pemberian biochar dengan dosis sepuluh ton per hektar meningkatkan ph tanah "
+        "asam sebesar nol koma lima sampai satu koma dua satuan"
+    )
+    quote = "biochar dengan dosis sepuluh ton per hektar"
+    sentence = Sentence(text=source, quote=quote, source_ids=[0])
+    assert verify_sentence(sentence, {0: source}) == STATUS_NEEDS_REVIEW
+
+    statuses = verify_sections(
+        [Section(1, "Bab", [Paragraph([sentence])])], {0: source}
+    )
+    assert statuses[0].status == STATUS_NEEDS_REVIEW
+    assert "parafrase" in statuses[0].reason
+
+
+def test_kalimat_panjang_hasil_parafrase_tetap_terverifikasi():
+    source = (
+        "pemberian biochar dengan dosis sepuluh ton per hektar meningkatkan ph tanah "
+        "asam sebesar nol koma lima sampai satu koma dua satuan"
+    )
+    quote = "biochar dengan dosis sepuluh ton per hektar"
+    paraphrase = (
+        "biochar sepuluh ton per hektar dinaikkan untuk memperbaiki ph tanah masam "
+        "sekitar nol koma lima hingga satu koma dua poin"
+    )
+    assert verify_sentence(
+        Sentence(text=paraphrase, quote=quote, source_ids=[0]), {0: source}
+    ) == STATUS_VERIFIED
+
+
+def test_kalimat_pendek_tidak_dihukum_karena_kebetulan_sama():
+    # < 12 kata: pernyataan pendek yang sama dengan kutipan tetap terverifikasi.
+    source = "pertanian organik di indonesia sangat penting bagi petani kecil"
+    sentence = Sentence(
+        text="Pertanian organik di Indonesia sangat penting bagi petani.",
+        quote="pertanian organik di indonesia sangat penting bagi petani",
+        source_ids=[0],
+    )
+    assert verify_sentence(sentence, {0: source}) == STATUS_VERIFIED
+
+
+# --- Verifikasi kutipan lintas bahasa (kalimat ID <-> sumber EN) --------------
+
+EN_SOURCE = (
+    "social media use is associated with lower academic performance and reduced "
+    "study time among college students in the survey"
+)
+
+
+def test_kalimat_terjemahan_dengan_kutipan_asing_eksak_terverifikasi():
+    sentence = Sentence(
+        text=(
+            "Penggunaan media sosial yang berlebihan berkaitan dengan menurunnya "
+            "prestasi akademik dan berkurangnya waktu belajar mahasiswa."
+        ),
+        quote=EN_SOURCE,
+        source_ids=[0],
+    )
+    statuses = verify_sections(
+        [Section(1, "Bab", [Paragraph([sentence])])], {0: EN_SOURCE}
+    )
+    assert statuses[0].status == STATUS_VERIFIED
+    assert "terjemahan" in statuses[0].reason
+
+
+def test_kutipan_asing_yang_tidak_ada_di_sumber_tetap_tidak_terverifikasi():
+    sentence = Sentence(
+        text=(
+            "Penggunaan media sosial yang berlebihan berkaitan dengan menurunnya "
+            "prestasi akademik dan berkurangnya waktu belajar mahasiswa."
+        ),
+        quote="this exact quotation does not appear anywhere in the source text at all",
+        source_ids=[0],
+    )
+    assert verify_sentence(sentence, {0: EN_SOURCE}) == STATUS_UNVERIFIED
+
+
+def test_kalimat_inggris_salinan_verbatim_tetap_perlu_ditinjau():
+    verbatim = (
+        "Social media use is associated with lower academic performance and "
+        "reduced study time among college students in the survey."
+    )
+    sentence = Sentence(text=verbatim, quote=EN_SOURCE, source_ids=[0])
+    statuses = verify_sections(
+        [Section(1, "Bab", [Paragraph([sentence])])], {0: EN_SOURCE}
+    )
+    assert statuses[0].status == STATUS_NEEDS_REVIEW
+    assert "parafrase" in statuses[0].reason
+
+
+def test_halusinasi_sebahasa_tetap_perlu_ditinjau():
+    """Kalimat Indonesia yang tidak didukung sumber Indonesia tidak dianggap terjemahan."""
+    source = "laporan penelitian pertanian organik di indonesia sangat penting bagi petani"
+    sentence = Sentence(
+        text="Pemerintah melarang ekspor komoditas beras secara ketat di pasar internasional.",
+        quote="pertanian organik di indonesia sangat penting bagi petani",
+        source_ids=[0],
+    )
+    assert verify_sentence(sentence, {0: source}) == STATUS_NEEDS_REVIEW
+
+
+# --- Kutipan berelipsis ("...") ----------------------------------------------
+
+
+EN_LONG = (
+    "In educational institutions, the impact of social media on academic performance "
+    "remains a highly debated topic. Numerous studies have demonstrated a negative "
+    "relationship between social media use and academic achievement among students."
+)
+
+
+def test_kutipan_berelipsis_yang_semua_bagiannya_ada_tetap_terverifikasi():
+    quote = (
+        "impact of social media on academic performance remains a highly debated topic "
+        "... Numerous studies have demonstrated a negative relationship"
+    )
+    sentence = Sentence(
+        text=(
+            "Pengaruh media sosial terhadap prestasi akademik mahasiswa masih menjadi "
+            "perdebatan, dan banyak studi menunjukkan hubungan negatif antara keduanya."
+        ),
+        quote=quote,
+        source_ids=[0],
+    )
+    statuses = verify_sections([Section(1, "Bab", [Paragraph([sentence])])], {0: EN_LONG})
+    assert statuses[0].status == STATUS_VERIFIED
+
+
+def test_kutipan_berelipsis_dengan_satu_bagian_hilang_tetap_tidak_terverifikasi():
+    quote = (
+        "impact of social media on academic performance remains a highly debated topic "
+        "... kalimat ini sama sekali tidak ada di sumber"
+    )
+    sentence = Sentence(
+        text="Pengaruh media sosial terhadap prestasi akademik masih diperdebatkan.",
+        quote=quote,
+        source_ids=[0],
+    )
+    assert verify_sentence(sentence, {0: EN_LONG}) == STATUS_UNVERIFIED

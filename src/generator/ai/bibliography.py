@@ -65,7 +65,7 @@ def _source_from_dict(data: dict) -> Source:
             )
     return Source(
         authors=authors,
-        year=_text_field(data, "year"),
+        year=_text_field(data, "year").strip(),
         title=repair_mojibake(_text_field(data, "title")),
         container=repair_mojibake(_text_field(data, "container")),
         doi=_text_field(data, "doi"),
@@ -104,4 +104,9 @@ def merge_metadata(ai: Source, doc: dict[str, str]) -> Source:
         container=pick("container", ai.container),
         doi=pick("doi", ai.doi),
         url=pick("url", ai.url),
+        # Volume/nomor/halaman jarang ada di metadata dokumen; pertahankan nilai
+        # dari jalur CrossRef (ai) bila metadata tidak membawanya.
+        volume=pick("volume", ai.volume),
+        issue=pick("issue", ai.issue),
+        pages=pick("pages", ai.pages),
     )
