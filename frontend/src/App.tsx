@@ -201,7 +201,7 @@ export const App: React.FC = () => {
 
         {/* Dynamic Tab Body (Preserved / Keep-Alive) */}
         <div className="app-workspace flex-1 flex overflow-hidden relative">
-          <div className={`flex-1 flex overflow-hidden h-full w-full ${currentTab === 'laporan' ? 'flex' : 'hidden'}`}>
+          <div className={`flex-1 flex overflow-hidden h-full w-full min-h-0 ${currentTab === 'laporan' ? 'flex' : 'hidden'}`}>
             <TabLaporan
               isActive={currentTab === 'laporan'}
               onGenerateComplete={handleGenerateComplete}

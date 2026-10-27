@@ -669,7 +669,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden report-root">
+    <div className="flex-1 flex h-full min-h-0 overflow-hidden report-root">
       {/* Live Generation Paper Canvas */}
       {isGenerating ? (
         <div className="flex-1 bg-slate-100/90 flex flex-col h-full overflow-hidden generation-studio">
@@ -794,11 +794,11 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
         </div>
       ) : (
         /* Normal Setup View */
-        <div className="flex-1 flex overflow-hidden report-studio">
+        <div className="flex-1 flex h-full min-h-0 overflow-hidden report-studio">
           {/* Left Column: Sumber Referensi */}
-          <div className="w-96 border-r border-slate-200 bg-white flex flex-col justify-between shrink-0 report-source-desk">
-            <div className="p-5 flex-1 flex flex-col overflow-hidden source-desk-content">
-              <div className="flex items-center justify-between mb-4 source-desk-heading">
+          <div className="w-96 border-r border-teal-100/70 bg-white flex flex-col h-full min-h-0 shrink-0 report-source-desk overflow-hidden">
+            <div className="p-5 flex-1 flex flex-col min-h-0 overflow-hidden source-desk-content">
+              <div className="flex items-center justify-between mb-4 shrink-0 source-desk-heading">
                 <div className="flex items-center space-x-2">
                   <BookOpen className="w-4 h-4 text-brand-600" />
                   <div>
@@ -812,7 +812,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               </div>
 
               {/* Source action buttons */}
-              <div className="grid grid-cols-2 gap-2 mb-4 source-action-grid">
+              <div className="grid grid-cols-2 gap-2 mb-4 shrink-0 source-action-grid">
                 <button
                   onClick={handleAddPdf}
                   disabled={loadingSource}
@@ -834,7 +834,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
               </div>
 
               {/* Source List */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 source-list">
+              <div className="flex-1 overflow-y-auto min-h-0 space-y-2.5 pr-2 source-list">
                 {loadingSource && (
                   <div className="p-3 mb-2 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 text-xs flex items-center space-x-2 animate-pulse">
                     <Loader2 className="w-4 h-4 animate-spin text-brand-600 shrink-0" />
@@ -915,7 +915,7 @@ export const TabLaporan: React.FC<TabLaporanProps> = ({ onGenerateComplete, onGe
 
             {/* Selected source metadata editor drawer */}
             {selectedSourceIdx !== null && sources[selectedSourceIdx] && (
-              <div className="p-4 border-t border-slate-200 bg-slate-50 text-xs space-y-2 source-metadata">
+              <div className="p-4 border-t border-teal-100 bg-teal-50/40 text-xs space-y-2 source-metadata max-h-60 overflow-y-auto shrink-0">
                 <div className="flex items-center justify-between font-bold text-slate-700">
                   <span>Koreksi Metadata Sumber #{selectedSourceIdx + 1}</span>
                   <button onClick={() => setSelectedSourceIdx(null)} className="text-slate-400 hover:text-slate-600">✕</button>
